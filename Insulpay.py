@@ -52,15 +52,6 @@ MASTER_PAYROLL_DIR = netpath("data", "master_payroll")
 # Ensure master payroll directory exists
 os.makedirs(MASTER_PAYROLL_DIR, exist_ok=True)
 
-
-# =========================================================
-# File Paths
-# =========================================================
-EMPLOYEE_FILE = netpath("data", "employees.xlsx")
-PAYRATE_FILE = netpath("data", "payrates.xlsx")
-VACATION_TEMPLATE = netpath("data", "spreadsheet", "VacationLogTemplate.xlsx")
-VACATION_LOG = netpath("vacation_log.xlsx")
-
 def ensure_vacation_log_exists():
     """Ensure vacation_log.xlsx exists by copying the template if needed."""
     if not os.path.exists(VACATION_LOG):
@@ -69,6 +60,29 @@ def ensure_vacation_log_exists():
 
         shutil.copy(VACATION_TEMPLATE, VACATION_LOG)
         print("Vacation log created from template.")
+
+def ensure_vacation_request_file_exists():
+    """Ensure vacation_requests.xlsx exists by copying the template if needed."""
+    if not os.path.exists(REQUEST_FILE):
+        if not os.path.exists(REQUEST_TEMPLATE):
+            raise FileNotFoundError(f"Template not found: {REQUEST_TEMPLATE}")
+
+        shutil.copy(REQUEST_TEMPLATE, REQUEST_FILE)
+        print("Vacation request file created from template.")
+
+
+# =========================================================
+# File Paths
+# =========================================================
+EMPLOYEE_FILE = netpath("data", "employees.xlsx")
+PAYRATE_FILE = netpath("data", "payrates.xlsx")
+VACATION_TEMPLATE = netpath("data", "spreadsheet", "VacationLogTemplate.xlsx")
+VACATION_LOG = netpath("vacation_log.xlsx")
+REQUEST_TEMPLATE = netpath("data", "spreadsheet","VacationRequestTemplate.xlsx")
+REQUEST_FILE = netpath("vacation_requests.xlsx")
+
+
+
 
 # =========================================================
 # Employee Excel Column Constants
@@ -340,6 +354,8 @@ class AppController(ctk.CTk):
         self.frames["employee_vacation"] = EmployeeVacationFrame(self)
         self.frames["vacation_tool"] = VacationPayrollFrame(self)
         self.frames["view_vacation"] = VacationHistoryFrame(self)
+        self.frames["request_vacation"] = RequestVacationFrame(self)
+        self.frames["vacation_approval"] = VacationRequestApprovalFrame(self)
 
         # Future frames can be added here:
         # self.frames["payroll_tools"] = PayrollToolsFrame(self)
@@ -1025,6 +1041,16 @@ class PayrollToolsMenuFrame(ctk.CTkFrame):
             width=250,
             command=lambda: self.master.show_frame("view_vacation")
         ).pack(pady=10)
+
+        # Create Paysheet
+        ctk.CTkButton(
+            button_frame,
+            text="Approve Vacation",
+            width=250,
+            command=lambda: self.master.show_frame("vacation_approval")
+        ).pack(pady=10)
+
+
 
         # Back button
         ctk.CTkButton(
@@ -2108,6 +2134,16 @@ class VacationHistoryFrame(ctk.CTkFrame):
         self.place(relwidth=1, relheight=1)
 
         # -----------------------------
+        # Top-Left Back Button
+        # -----------------------------
+        ctk.CTkButton(
+            self,
+            text="← Back",
+            width=120,
+            command=lambda: self.master.show_frame("payroll_tools_menu")
+        ).place(x=20, y=20)
+
+        # -----------------------------
         # Title
         # -----------------------------
         title = ctk.CTkLabel(
@@ -2115,7 +2151,7 @@ class VacationHistoryFrame(ctk.CTkFrame):
             text="Vacation History Viewer",
             font=ctk.CTkFont(size=28, weight="bold")
         )
-        title.pack(pady=30)
+        title.pack(pady=60)  # pushed down to avoid overlap with top-left button
 
         # -----------------------------
         # Employee Selector
@@ -2141,14 +2177,24 @@ class VacationHistoryFrame(ctk.CTkFrame):
         self.table_frame.pack(pady=20)
 
         # -----------------------------
-        # Back Button
+        # Bottom Navigation Buttons
         # -----------------------------
+        nav_frame = ctk.CTkFrame(self)
+        nav_frame.pack(pady=10)
+
         ctk.CTkButton(
-            self,
-            text="Back",
+            nav_frame,
+            text="Back to Payroll Tools",
             width=200,
             command=lambda: self.master.show_frame("payroll_tools_menu")
-        ).pack(pady=10)
+        ).grid(row=0, column=0, padx=10)
+
+        ctk.CTkButton(
+            nav_frame,
+            text="Back to Main Menu",
+            width=200,
+            command=lambda: self.master.show_frame("main_admin")
+        ).grid(row=0, column=1, padx=10)
 
     # ---------------------------------------------------------
     # Load vacation history for selected employee
@@ -2253,9 +2299,9 @@ class MainEmployeeFrame(ctk.CTkFrame):
         # Submit Hours (future feature)
         ctk.CTkButton(
             button_frame,
-            text="Submit Hours",
+            text="Request Vacation",
             width=250,
-            command=lambda: self.master.show_frame("submit_hours")
+            command=lambda: self.master.show_frame("request_vacation")
         ).pack(pady=10)
 
         # -----------------------------
@@ -2319,7 +2365,7 @@ class EmployeeInfoFrame(ctk.CTkFrame):
         ctk.CTkLabel(self.info_frame, text="Full Name:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
         ctk.CTkLabel(self.info_frame, text="Username:").grid(row=1, column=0, padx=10, pady=10, sticky="e")
         ctk.CTkLabel(self.info_frame, text="Role:").grid(row=2, column=0, padx=10, pady=10, sticky="e")
-        ctk.CTkLabel(self.info_frame, text="Vacation Days:").grid(row=3, column=0, padx=10, pady=10, sticky="e")
+        ctk.CTkLabel(self.info_frame, text="Vacation Days Earned:").grid(row=3, column=0, padx=10, pady=10, sticky="e")
         ctk.CTkLabel(self.info_frame, text="Password:").grid(row=4, column=0, padx=10, pady=10, sticky="e")
 
         # Dynamic labels
@@ -2373,7 +2419,9 @@ class EmployeeInfoFrame(ctk.CTkFrame):
         self.fullname_label.configure(text=user.fullname)
         self.username_label.configure(text=user.username)
         self.role_label.configure(text=user.role)
-        self.vacation_label.configure(text=str(user.vacationdays))
+
+        # Updated vacation field
+        self.vacation_label.configure(text=str(user.vacation_max))
 
         # Mask password by default
         self.password_visible = False
@@ -2387,12 +2435,10 @@ class EmployeeInfoFrame(ctk.CTkFrame):
         user = self.master.current_user
 
         if self.password_visible:
-            # Mask it
             self.password_label.configure(text="*" * len(user.pwd))
             self.toggle_button.configure(text="Show")
             self.password_visible = False
         else:
-            # Show it
             self.password_label.configure(text=user.pwd)
             self.toggle_button.configure(text="Hide")
             self.password_visible = True
@@ -2424,15 +2470,23 @@ class EmployeeVacationFrame(ctk.CTkFrame):
         self.info_frame = ctk.CTkFrame(self)
         self.info_frame.pack(pady=20)
 
-        # Static label
+        # Remaining Days Label
         ctk.CTkLabel(
             self.info_frame,
-            text="Available Vacation Days:"
+            text="Remaining Vacation Days:"
         ).grid(row=0, column=0, padx=10, pady=10, sticky="e")
 
-        # Dynamic label
-        self.vacation_label = ctk.CTkLabel(self.info_frame, text="")
-        self.vacation_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        self.remaining_label = ctk.CTkLabel(self.info_frame, text="")
+        self.remaining_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+
+        # Max Days Label
+        ctk.CTkLabel(
+            self.info_frame,
+            text="Total Allowed Days:"
+        ).grid(row=1, column=0, padx=10, pady=10, sticky="e")
+
+        self.max_label = ctk.CTkLabel(self.info_frame, text="")
+        self.max_label.grid(row=1, column=1, padx=10, pady=10, sticky="w")
 
         # Optional message (dynamic)
         self.message_label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=16))
@@ -2453,22 +2507,317 @@ class EmployeeVacationFrame(ctk.CTkFrame):
     # ---------------------------------------------------------
     def on_show(self):
         user = self.master.current_user
-        days = user.vacationdays
 
-        # Update main label
-        self.vacation_label.configure(text=str(days))
+        remaining = user.vacation_remaining
+        max_days = user.vacation_max
+
+        # Update labels
+        self.remaining_label.configure(text=str(remaining))
+        self.max_label.configure(text=str(max_days))
 
         # Optional message logic
-        if days <= 0:
+        if remaining <= 0:
             msg = "You have no vacation days remaining."
-        elif days <= 3:
+        elif remaining <= 3:
             msg = "You are running low on vacation days."
-        elif days >= 20:
+        elif remaining >= 20:
             msg = "You have a high vacation balance."
         else:
             msg = ""
 
         self.message_label.configure(text=msg)
+
+
+class RequestVacationFrame(ctk.CTkFrame):
+    """Employees submit vacation day requests for admin approval."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.place(relwidth=1, relheight=1)
+
+        # -----------------------------
+        # Title
+        # -----------------------------
+        title = ctk.CTkLabel(
+            self,
+            text="Request Vacation",
+            font=ctk.CTkFont(size=28, weight="bold")
+        )
+        title.pack(pady=30)
+
+        # -----------------------------
+        # Info Frame
+        # -----------------------------
+        info = ctk.CTkFrame(self)
+        info.pack(pady=20)
+
+        ctk.CTkLabel(info, text="Vacation Days Remaining:").grid(row=0, column=0, padx=10, pady=10)
+        self.remaining_label = ctk.CTkLabel(info, text="")
+        self.remaining_label.grid(row=0, column=1, padx=10, pady=10)
+
+        ctk.CTkLabel(info, text="Days Requested:").grid(row=1, column=0, padx=10, pady=10)
+        self.days_entry = ctk.CTkEntry(info, width=200)
+        self.days_entry.grid(row=1, column=1, padx=10, pady=10)
+
+        # -----------------------------
+        # Submit Button
+        # -----------------------------
+        ctk.CTkButton(
+            self,
+            text="Submit Request",
+            width=200,
+            command=self.submit_request
+        ).pack(pady=20)
+
+        # Status message
+        self.message_label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=16))
+        self.message_label.pack(pady=10)
+
+        # Back button
+        ctk.CTkButton(
+            self,
+            text="Back",
+            width=200,
+            command=lambda: self.master.show_frame("main_employee")
+        ).pack(pady=20)
+
+    # ---------------------------------------------------------
+    # Populate fields when shown
+    # ---------------------------------------------------------
+    def on_show(self):
+        user = self.master.current_user
+        self.remaining_label.configure(text=str(user.vacation_remaining))
+        self.days_entry.delete(0, "end")
+        self.message_label.configure(text="")
+
+    # ---------------------------------------------------------
+    # Submit vacation request
+    # ---------------------------------------------------------
+    def submit_request(self):
+        user = self.master.current_user
+
+        try:
+            days_requested = float(self.days_entry.get().strip())
+        except:
+            self.message_label.configure(text="Invalid number of days.", text_color="red")
+            return
+
+        if days_requested <= 0:
+            self.message_label.configure(text="Enter a positive number.", text_color="red")
+            return
+
+        if days_requested > user.vacation_remaining:
+            self.message_label.configure(text="Not enough vacation days remaining.", text_color="red")
+            return
+
+        # Load or create request file
+        req_file = netpath(REQUEST_FILE)
+
+        if not os.path.exists(req_file):
+            df = pd.DataFrame(columns=[
+                "date_requested", "username", "fullname",
+                "days_requested", "status", "admin_comment"
+            ])
+            df.to_excel(req_file, index=False)
+
+        df = pd.read_excel(req_file)
+
+        new_row = {
+            "date_requested": datetime.date.today().strftime("%Y-%m-%d"),
+            "username": user.username,
+            "fullname": user.fullname,
+            "days_requested": days_requested,
+            "status": "Pending",
+            "admin_comment": ""
+        }
+
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_excel(req_file, index=False)
+
+        self.message_label.configure(
+            text="Your request has been submitted for approval.",
+            text_color="green"
+        )
+
+class VacationRequestApprovalFrame(ctk.CTkFrame):
+    """Admin screen to approve or deny employee vacation requests."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.place(relwidth=1, relheight=1)
+
+        # -----------------------------
+        # Top-Left Back Button
+        # -----------------------------
+        ctk.CTkButton(
+            self,
+            text="← Back",
+            width=120,
+            command=lambda: self.master.show_frame("payroll_tools_menu")
+        ).place(x=20, y=20)
+
+        # -----------------------------
+        # Title
+        # -----------------------------
+        title = ctk.CTkLabel(
+            self,
+            text="Vacation Request Approval",
+            font=ctk.CTkFont(size=28, weight="bold")
+        )
+        title.pack(pady=60)
+
+        # -----------------------------
+        # Scrollable Table
+        # -----------------------------
+        self.table_frame = ctk.CTkScrollableFrame(self, width=900, height=450)
+        self.table_frame.pack(pady=20)
+
+        # Bottom Navigation
+        nav = ctk.CTkFrame(self)
+        nav.pack(pady=10)
+
+        ctk.CTkButton(
+            nav,
+            text="Back to Payroll Tools",
+            width=200,
+            command=lambda: self.master.show_frame("payroll_tools_menu")
+        ).grid(row=0, column=0, padx=10)
+
+        ctk.CTkButton(
+            nav,
+            text="Back to Main Menu",
+            width=200,
+            command=lambda: self.master.show_frame("main_admin")
+        ).grid(row=0, column=1, padx=10)
+
+    # ---------------------------------------------------------
+    # Refresh table when shown
+    # ---------------------------------------------------------
+    def on_show(self):
+        self.load_requests()
+
+    # ---------------------------------------------------------
+    # Load pending requests
+    # ---------------------------------------------------------
+    def load_requests(self):
+        # Clear old rows
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+
+        req_file = netpath(REQUEST_FILE)
+
+        if not os.path.exists(req_file):
+            ctk.CTkLabel(self.table_frame, text="No pending requests.").pack(pady=20)
+            return
+
+        df = pd.read_excel(req_file)
+
+        pending = df[df["status"] == "Pending"]
+
+        if pending.empty:
+            ctk.CTkLabel(self.table_frame, text="No pending requests.").pack(pady=20)
+            return
+
+        # Headers
+        headers = ["Date", "Employee", "Days", "Approve", "Deny"]
+        for col, text in enumerate(headers):
+            ctk.CTkLabel(
+                self.table_frame,
+                text=text,
+                font=ctk.CTkFont(weight="bold")
+            ).grid(row=0, column=col, padx=10, pady=5)
+
+        # Rows
+        for row_index, (idx, row) in enumerate(pending.iterrows(), start=1):
+            ctk.CTkLabel(self.table_frame, text=row["date_requested"]).grid(row=row_index, column=0, padx=10, pady=5)
+            ctk.CTkLabel(self.table_frame, text=row["fullname"]).grid(row=row_index, column=1, padx=10, pady=5)
+            ctk.CTkLabel(self.table_frame, text=row["days_requested"]).grid(row=row_index, column=2, padx=10, pady=5)
+
+            # Approve button
+            ctk.CTkButton(
+                self.table_frame,
+                text="Approve",
+                width=100,
+                fg_color="green",
+                command=lambda i=idx: self.approve_request(i)
+            ).grid(row=row_index, column=3, padx=10)
+
+            # Deny button
+            ctk.CTkButton(
+                self.table_frame,
+                text="Deny",
+                width=100,
+                fg_color="red",
+                hover_color="#8b0000",
+                command=lambda i=idx: self.deny_request(i)
+            ).grid(row=row_index, column=4, padx=10)
+
+    # ---------------------------------------------------------
+    # Approve request
+    # ---------------------------------------------------------
+    def approve_request(self, request_index):
+        req_file = netpath(REQUEST_FILE)
+        df = pd.read_excel(req_file)
+
+        row = df.loc[request_index]
+
+        username = row["username"]
+        days = float(row["days_requested"])
+
+        # Find employee
+        emp = next(e for e in employees if e.username == username)
+
+        # Deduct days
+        emp.vacation_remaining -= days
+        save_employees_to_excel()
+
+        # Log to vacation_log.xlsx
+        self.append_vacation_log(emp, days)
+
+        # Update request status
+        df.at[request_index, "status"] = "Approved"
+        df.to_excel(req_file, index=False)
+
+        self.load_requests()
+
+    # ---------------------------------------------------------
+    # Deny request
+    # ---------------------------------------------------------
+    def deny_request(self, request_index):
+        req_file = netpath(REQUEST_FILE)
+        df = pd.read_excel(req_file)
+
+        # Ask for admin comment
+        comment = simpledialog.askstring("Deny Request", "Enter reason for denial:")
+
+        df.at[request_index, "status"] = "Denied"
+        df.at[request_index, "admin_comment"] = comment if comment else "No comment"
+        df.to_excel(req_file, index=False)
+
+        self.load_requests()
+
+    # ---------------------------------------------------------
+    # Append approved vacation to log
+    # ---------------------------------------------------------
+    def append_vacation_log(self, emp, days_used):
+        ensure_vacation_log_exists()
+
+        df = pd.read_excel(VACATION_LOG)
+
+        new_row = {
+            "date": datetime.date.today().strftime("%Y-%m-%d"),
+            "username": emp.username,
+            "fullname": emp.fullname,
+            "days_used": days_used,
+            "rate": 0,  # Admin approval does not include pay rate
+            "total_pay": 0,
+            "remaining_days": emp.vacation_remaining
+        }
+
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_excel(VACATION_LOG, index=False)
 
 
 if __name__ == "__main__":
