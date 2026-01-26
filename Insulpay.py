@@ -2401,25 +2401,38 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         section = self.section_option.get()
 
         if section == "Employee Totals":
-            display_df = df.iloc[:, 0:2]  # A + B
+            display_df = df.iloc[:, 0:2]
             display_df.columns = ["Employee", "Total"]
 
         elif section == "Pay Item Totals":
-            display_df = df.iloc[:, 3:5]  # D + E
+            display_df = df.iloc[:, 3:5]
             display_df.columns = ["Pay Item", "Total"]
 
         elif section == "Job Totals":
-            display_df = df.iloc[:, 6:8]  # G + H
+            display_df = df.iloc[:, 6:8]
             display_df.columns = ["Job", "Total"]
 
         elif section == "Month Totals":
-            display_df = df.iloc[:, 9:11]  # J + K
+            display_df = df.iloc[:, 9:11]
             display_df.columns = ["Month", "Total"]
 
         else:
             ctk.CTkLabel(
                 self.table_frame,
                 text="Unknown section.",
+                font=ctk.CTkFont(size=16)
+            ).pack(pady=20)
+            return
+
+        # -----------------------------
+        # FIX: Remove empty rows (NaN rows)
+        # -----------------------------
+        display_df = display_df.dropna(how="all")
+
+        if display_df.empty:
+            ctk.CTkLabel(
+                self.table_frame,
+                text="No data found for this section.",
                 font=ctk.CTkFont(size=16)
             ).pack(pady=20)
             return
@@ -2443,6 +2456,7 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
                     self.table_frame,
                     text=str(value)
                 ).grid(row=row_index, column=col_index, padx=10, pady=5)
+
 
 
 
