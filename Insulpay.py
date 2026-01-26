@@ -71,6 +71,12 @@ def ensure_vacation_log_exists():
     """
     Ensure vacation_log.xlsx exists by copying the template if needed.
     """
+    # Ensure parent directory exists
+    log_dir = os.path.dirname(VACATION_LOG)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # Create file if missing
     if not os.path.exists(VACATION_LOG):
         if not os.path.exists(VACATION_TEMPLATE):
             raise FileNotFoundError(f"Template not found: {VACATION_TEMPLATE}")
@@ -79,16 +85,24 @@ def ensure_vacation_log_exists():
         print("Vacation log created from template.")
 
 
+
 def ensure_vacation_request_file_exists():
     """
     Ensure vacation_requests.xlsx exists by copying the template if needed.
     """
+    # Ensure parent directory exists
+    req_dir = os.path.dirname(REQUEST_FILE)
+    if not os.path.exists(req_dir):
+        os.makedirs(req_dir)
+
+    # Create file if missing
     if not os.path.exists(REQUEST_FILE):
         if not os.path.exists(REQUEST_TEMPLATE):
             raise FileNotFoundError(f"Template not found: {REQUEST_TEMPLATE}")
 
         shutil.copy(REQUEST_TEMPLATE, REQUEST_FILE)
         print("Vacation request file created from template.")
+
 
 # ---------------------------------------------------------
 # Helper to append master_payroll file
@@ -1617,7 +1631,7 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
         # -----------------------------
         # Prepare output directory
         # -----------------------------
-        save_dir = netpath("weekly payroll")
+        save_dir = netpath("payroll_records", "weekly payroll")
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
@@ -1679,7 +1693,7 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
                         try:
                             date_val = datetime.datetime.strptime(date_val, fmt).date()
                             break
-                        except:
+                        except ValueError:
                             pass
 
                 if not isinstance(date_val, datetime.date):
@@ -1694,7 +1708,7 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
 
                 try:
                     split = float(split)
-                except:
+                except ValueError:
                     continue
 
                 total_pay += split
@@ -1831,7 +1845,7 @@ class ViewWeeklyPayrollFrame(ctk.CTkFrame):
         from tkinter import filedialog
 
         path = filedialog.askopenfilename(
-            initialdir=netpath("weekly payroll"),
+            initialdir=netpath("payroll_records", "weekly payroll"),
             filetypes=[("Excel Files", "*.xlsx")]
         )
 
@@ -2091,7 +2105,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
         # -----------------------------
         # Prepare output directory
         # -----------------------------
-        save_dir = netpath("ytd payroll")
+        save_dir = netpath("payroll_records", "ytd payroll")
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
@@ -2148,7 +2162,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
                         date_val = datetime.datetime.strptime(
                             date_val, "%m-%d-%Y"
                         ).date()
-                    except:
+                    except ValueError:
                         continue
 
                 if not isinstance(date_val, datetime.date):
@@ -2170,7 +2184,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
 
                 try:
                     split = float(split)
-                except:
+                except ValueError, TypeError:
                     continue
 
                 # Employee totals
@@ -2324,6 +2338,9 @@ class VacationPayrollFrame(ctk.CTkFrame):
         self.master = master
         self.place(relwidth=1, relheight=1)
 
+        self.calculated_pay = None
+        self.calculated_days = None
+
         # -----------------------------
         # Title
         # -----------------------------
@@ -2450,7 +2467,7 @@ class VacationPayrollFrame(ctk.CTkFrame):
         try:
             days_used = float(self.days_entry.get().strip())
             rate = float(self.rate_entry.get().strip())
-        except:
+        except (ValueError, TypeError):
             self.result_label.configure(
                 text="Invalid input.",
                 text_color="red"
@@ -2854,7 +2871,8 @@ class VacationRequestApprovalFrame(ctk.CTkFrame):
     # ---------------------------------------------------------
     # Append approved vacation to log
     # ---------------------------------------------------------
-    def append_vacation_log(self, emp, days_used):
+    @staticmethod
+    def append_vacation_log(emp, days_used):
         ensure_vacation_log_exists()
 
         df = pd.read_excel(VACATION_LOG)
@@ -3156,7 +3174,7 @@ class RequestVacationFrame(ctk.CTkFrame):
         # Validate input
         try:
             days_requested = float(self.days_entry.get().strip())
-        except:
+        except ValueError, TypeError:
             self.message_label.configure(
                 text="Invalid number of days.",
                 text_color="red"
