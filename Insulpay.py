@@ -394,6 +394,7 @@ class AppController(ctk.CTk):
         self.frames["weekly_payroll"] = WeeklyPayrollFrame(self)
         self.frames["view_weekly"] = ViewWeeklyPayrollFrame(self)
         self.frames["ytd"] = YTDPayrollFrame(self)
+        self.frames["view_ytd"] = ViewYTDSummaryFrame(self)
 
         # -----------------------------
         # Vacation Screens
@@ -1152,6 +1153,14 @@ class PayrollToolsMenuFrame(ctk.CTkFrame):
             text="Generate YTD Payroll",
             width=260,
             command=lambda: self.master.show_frame("ytd")
+        ).pack(pady=10)
+
+        # View Yearly Payroll Button
+        ctk.CTkButton(
+            button_frame,
+            text="View YTD Payroll",
+            width=260,
+            command=lambda: self.master.show_frame("view_ytd")
         ).pack(pady=10)
 
         # Back button
@@ -2259,6 +2268,183 @@ class YTDPayrollFrame(ctk.CTkFrame):
             "YTD Payroll Summary Generated",
             f"Saved to:\n{output_path}"
         )
+
+# =========================================================
+# View YTD Payroll Summary Frame
+# =========================================================
+class ViewYTDSummaryFrame(ctk.CTkFrame):
+    """Displays YTD payroll summary with section selector."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.place(relwidth=1, relheight=1)
+
+        # -----------------------------
+        # Top-Left Back Button
+        # -----------------------------
+        ctk.CTkButton(
+            self,
+            text="← Back",
+            width=120,
+            command=lambda: self.master.show_frame("payroll_tools_menu")
+        ).place(x=20, y=20)
+
+        # -----------------------------
+        # Title
+        # -----------------------------
+        title = ctk.CTkLabel(
+            self,
+            text="YTD Payroll Summary Viewer",
+            font=ctk.CTkFont(size=28, weight="bold")
+        )
+        title.pack(pady=60)
+
+        # -----------------------------
+        # Filter Controls
+        # -----------------------------
+        filter_frame = ctk.CTkFrame(self)
+        filter_frame.pack(pady=10)
+
+        # Year
+        ctk.CTkLabel(filter_frame, text="Year:").grid(
+            row=0, column=0, padx=10, pady=10
+        )
+        self.year_entry = ctk.CTkEntry(filter_frame, width=150)
+        self.year_entry.grid(row=0, column=1, padx=10, pady=10)
+
+        # Section Selector
+        ctk.CTkLabel(filter_frame, text="Section:").grid(
+            row=1, column=0, padx=10, pady=10
+        )
+        self.section_option = ctk.CTkOptionMenu(
+            filter_frame,
+            values=[
+                "Employee Totals",
+                "Pay Item Totals",
+                "Job Totals",
+                "Month Totals"
+            ]
+        )
+        self.section_option.grid(row=1, column=1, padx=10, pady=10)
+
+        # View Button
+        ctk.CTkButton(
+            filter_frame,
+            text="Load Summary",
+            width=200,
+            command=self.load_ytd_summary
+        ).grid(row=2, column=0, columnspan=2, pady=20)
+
+        # -----------------------------
+        # Scrollable Table
+        # -----------------------------
+        self.table_frame = ctk.CTkScrollableFrame(self, width=900, height=400)
+        self.table_frame.pack(pady=20)
+
+        # -----------------------------
+        # Bottom Navigation
+        # -----------------------------
+        nav = ctk.CTkFrame(self)
+        nav.pack(pady=10)
+
+        ctk.CTkButton(
+            nav,
+            text="Back to Payroll Tools",
+            width=200,
+            command=lambda: self.master.show_frame("payroll_tools_menu")
+        ).grid(row=0, column=0, padx=10)
+
+        ctk.CTkButton(
+            nav,
+            text="Back to Main Menu",
+            width=200,
+            command=lambda: self.master.show_frame("main_admin")
+        ).grid(row=0, column=1, padx=10)
+
+    # ---------------------------------------------------------
+    # Load YTD summary into table
+    # ---------------------------------------------------------
+    def load_ytd_summary(self):
+        # Clear old rows
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+
+        year_text = self.year_entry.get().strip()
+
+        # Validate year
+        if not year_text.isdigit():
+            ctk.CTkLabel(
+                self.table_frame,
+                text="Invalid year. Enter a number like 2025.",
+                font=ctk.CTkFont(size=16)
+            ).pack(pady=20)
+            return
+
+        year = int(year_text)
+
+        # Load YTD file
+        save_dir = netpath("payroll_records", "ytd payroll")
+        ytd_path = os.path.join(save_dir, f"YTD_{year}.xlsx")
+
+        if not os.path.exists(ytd_path):
+            ctk.CTkLabel(
+                self.table_frame,
+                text="No YTD summary found for this year.",
+                font=ctk.CTkFont(size=16)
+            ).pack(pady=20)
+            return
+
+        df = pd.read_excel(ytd_path)
+
+        # Determine which section to display
+        section = self.section_option.get()
+
+        if section == "Employee Totals":
+            display_df = df.iloc[:, 0:2]  # A + B
+            display_df.columns = ["Employee", "Total"]
+
+        elif section == "Pay Item Totals":
+            display_df = df.iloc[:, 3:5]  # D + E
+            display_df.columns = ["Pay Item", "Total"]
+
+        elif section == "Job Totals":
+            display_df = df.iloc[:, 6:8]  # G + H
+            display_df.columns = ["Job", "Total"]
+
+        elif section == "Month Totals":
+            display_df = df.iloc[:, 9:11]  # J + K
+            display_df.columns = ["Month", "Total"]
+
+        else:
+            ctk.CTkLabel(
+                self.table_frame,
+                text="Unknown section.",
+                font=ctk.CTkFont(size=16)
+            ).pack(pady=20)
+            return
+
+        # -----------------------------
+        # Table Headers
+        # -----------------------------
+        for col, text in enumerate(display_df.columns):
+            ctk.CTkLabel(
+                self.table_frame,
+                text=text,
+                font=ctk.CTkFont(weight="bold")
+            ).grid(row=0, column=col, padx=10, pady=5)
+
+        # -----------------------------
+        # Table Rows
+        # -----------------------------
+        for row_index, row in enumerate(display_df.itertuples(index=False), start=1):
+            for col_index, value in enumerate(row):
+                ctk.CTkLabel(
+                    self.table_frame,
+                    text=str(value)
+                ).grid(row=row_index, column=col_index, padx=10, pady=5)
+
+
 
 # =========================================================
 # Vacation Tools Menu Frame
