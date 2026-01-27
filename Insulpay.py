@@ -410,6 +410,7 @@ class AppController(ctk.CTk):
         self.frames["main_employee"] = MainEmployeeFrame(self)
         self.frames["employee_info"] = EmployeeInfoFrame(self)
         self.frames["request_vacation"] = RequestVacationFrame(self)
+        self.frames["view_employee_payroll"] = EmployeeWeeklyPayFrame(self)
 
         # -----------------------------
         # Future Frames
@@ -526,6 +527,9 @@ class LoginFrame(ctk.CTkFrame):
 
         # Store logged-in user
         self.master.current_user = user
+
+        #ensure fullname exists
+        self.master.current_user.fullname = f"{user.first} {user.last}"
 
         # Route based on role
         if user.role == "admin":
@@ -763,7 +767,7 @@ class EmployeeManagementFrame(ctk.CTkFrame):
 
         ctk.CTkButton(
             button_frame,
-            text="Back to Admin Menu",
+            text="Back",
             width=200,
             command=lambda: self.master.show_frame("main_admin")
         ).grid(row=0, column=1, padx=10)
@@ -1600,7 +1604,7 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
 
         ctk.CTkButton(
             self,
-            text="Back to Main Menu",
+            text="Back",
             width=200,
             command=lambda: self.master.show_frame("payroll_tools_menu")
         ).pack(pady=10)
@@ -1836,7 +1840,7 @@ class ViewWeeklyPayrollFrame(ctk.CTkFrame):
 
         ctk.CTkButton(
             self,
-            text="Back to Main Menu",
+            text="Back",
             width=200,
             command=self.go_back
         ).pack(pady=10)
@@ -2052,7 +2056,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
         # Back Button
         ctk.CTkButton(
             self,
-            text="Back to Payroll Tools",
+            text="Back",
             width=200,
             command=lambda: self.master.show_frame("payroll_tools_menu")
         ).pack(pady=10)
@@ -2457,9 +2461,6 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
                     text=str(value)
                 ).grid(row=row_index, column=col_index, padx=10, pady=5)
 
-
-
-
 # =========================================================
 # Vacation Tools Menu Frame
 # =========================================================
@@ -2621,7 +2622,7 @@ class VacationPayrollFrame(ctk.CTkFrame):
             btn_frame,
             text="Back",
             width=220,
-            command=lambda: self.master.show_frame("payroll_tools_menu")
+            command=lambda: self.master.show_frame("vacation_tool_menu")
         ).grid(row=0, column=2, padx=10)
 
         # -----------------------------
@@ -2757,7 +2758,7 @@ class VacationHistoryFrame(ctk.CTkFrame):
             self,
             text="← Back",
             width=120,
-            command=lambda: self.master.show_frame("payroll_tools_menu")
+            command=lambda: self.master.show_frame("vacation_tool_menu")
         ).place(x=20, y=20)
 
         # -----------------------------
@@ -2906,7 +2907,7 @@ class VacationRequestApprovalFrame(ctk.CTkFrame):
             self,
             text="← Back",
             width=120,
-            command=lambda: self.master.show_frame("payroll_tools_menu")
+            command=lambda: self.master.show_frame("vacation_tool_menu")
         ).place(x=20, y=20)
 
         # -----------------------------
@@ -2933,9 +2934,9 @@ class VacationRequestApprovalFrame(ctk.CTkFrame):
 
         ctk.CTkButton(
             nav,
-            text="Back to Payroll Tools",
+            text="Back",
             width=200,
-            command=lambda: self.master.show_frame("payroll_tools_menu")
+            command=lambda: self.master.show_frame("vacation_tool_menu")
         ).grid(row=0, column=0, padx=10)
 
         ctk.CTkButton(
@@ -3141,6 +3142,14 @@ class MainEmployeeFrame(ctk.CTkFrame):
             command=lambda: self.master.show_frame("request_vacation")
         ).pack(pady=10)
 
+        # View Weekly Pay button
+        ctk.CTkButton(
+            button_frame,
+            text="View Weekly Pay",
+            width=250,
+            command=lambda: self.master.show_frame("view_employee_payroll")
+        ).pack(pady=10)
+
         # -----------------------------
         # Logout Button
         # -----------------------------
@@ -3290,7 +3299,6 @@ class EmployeeInfoFrame(ctk.CTkFrame):
             self.toggle_button.configure(text="Hide")
             self.password_visible = True
 
-
 # =========================================================
 # Request Vacation Frame
 # =========================================================
@@ -3426,6 +3434,207 @@ class RequestVacationFrame(ctk.CTkFrame):
             text="Your request has been submitted for approval.",
             text_color="green"
         )
+
+# =========================================================
+# Employee Weekly Summary Frame
+# =========================================================
+# =========================================================
+# Employee Weekly Summary Frame
+# =========================================================
+class EmployeeWeeklyPayFrame(ctk.CTkFrame):
+    """Displays a weekly payroll summary for the logged-in employee."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.place(relwidth=1, relheight=1)
+
+        # Back button (top-left)
+        ctk.CTkButton(
+            self,
+            text="Back",
+            width=120,
+            command=lambda: self.master.show_frame("main_employee")
+        ).place(x=20, y=20)
+
+        # -----------------------------
+        # Title
+        # -----------------------------
+        title = ctk.CTkLabel(
+            self,
+            text="My Weekly Payroll Summary",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title.pack(pady=20)
+
+        # -----------------------------
+        # Week Selector
+        # -----------------------------
+        selector_frame = ctk.CTkFrame(self)
+        selector_frame.pack(pady=10)
+
+        ctk.CTkLabel(selector_frame, text="Choose Week:").grid(
+            row=0, column=0, padx=10
+        )
+
+        self.week_list = self.generate_week_list()
+        self.week_option = ctk.CTkOptionMenu(
+            selector_frame,
+            values=self.week_list,
+            width=250,
+            command=lambda _: self.load_week()
+        )
+        self.week_option.grid(row=0, column=1, padx=10)
+
+        self.week_option.set(self.week_list[0])
+
+        # -----------------------------
+        # Scrollable Display Area
+        # -----------------------------
+        self.scroll = ctk.CTkScrollableFrame(self, width=900, height=500)
+        self.scroll.pack(pady=20)
+
+    # ---------------------------------------------------------
+    # Generate last 12 weeks
+    # ---------------------------------------------------------
+    @staticmethod
+    def generate_week_list():
+        today = datetime.date.today()
+        weeks = []
+
+        for i in range(12):
+            start = today - datetime.timedelta(days=today.weekday() + (7 * i))
+            end = start + datetime.timedelta(days=6)
+            label = f"{start.strftime('%b %d')} - {end.strftime('%b %d, %Y')}"
+            weeks.append(label)
+
+        return weeks
+
+    # ---------------------------------------------------------
+    # Parse week label safely
+    # ---------------------------------------------------------
+    @staticmethod
+    def parse_week(label):
+        start_text, end_text = label.split(" - ")
+        end = datetime.datetime.strptime(end_text, "%b %d, %Y").date()
+        start = datetime.datetime.strptime(
+            f"{start_text} {end.year}", "%b %d %Y"
+        ).date()
+        return start, end
+
+    # ---------------------------------------------------------
+    # Load weekly summary
+    # ---------------------------------------------------------
+    def load_week(self):
+        # Clear old content
+        for widget in self.scroll.winfo_children():
+            widget.destroy()
+
+        user = self.master.current_user
+        fullname = user.fullname
+
+        # Payroll file path
+        path = os.path.join(MASTER_PAYROLL_DIR, f"{fullname}.xlsx")
+        if not os.path.exists(path):
+            ctk.CTkLabel(self.scroll, text="No payroll file found.").pack(pady=20)
+            return
+
+        df = pd.read_excel(path)
+
+        # Normalize headers
+        df.columns = [str(c).strip().lower() for c in df.columns]
+
+        # Detect required columns
+        col_map = {
+            "date": ["date", "day", "work_date"],
+            "job": ["job", "job name"],
+            "pay_item": ["pay item", "payitem"],
+            "quantity": ["quantity", "qty"],
+            "rate": ["rate", "payrate"],
+            "split": ["split", "pay", "amount", "total"]
+        }
+
+        resolved = {}
+        for target, options in col_map.items():
+            for opt in options:
+                if opt in df.columns:
+                    resolved[target] = opt
+                    break
+
+        required = ["date", "job", "pay_item", "quantity", "rate", "split"]
+        for col in required:
+            if col not in resolved:
+                ctk.CTkLabel(self.scroll, text=f"Missing column: {col}").pack(pady=20)
+                return
+
+        # Convert date
+        df[resolved["date"]] = pd.to_datetime(df[resolved["date"]], errors="coerce").dt.date
+
+        # Filter by selected week
+        week_label = self.week_option.get()
+        start_week, end_week = self.parse_week(week_label)
+
+        df = df[(df[resolved["date"]] >= start_week) & (df[resolved["date"]] <= end_week)]
+
+        if df.empty:
+            ctk.CTkLabel(self.scroll, text="No payroll data for this week.").pack(pady=20)
+            return
+
+        # -----------------------------
+        # Weekly Total
+        # -----------------------------
+        total = df[resolved["split"]].sum()
+
+        ctk.CTkLabel(
+            self.scroll,
+            text=f"Weekly Total: ${total:,.2f}",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(pady=10)
+
+        # -----------------------------
+        # Section Builder
+        # -----------------------------
+        def build_section(title, data_dict):
+            ctk.CTkLabel(
+                self.scroll,
+                text=title,
+                font=ctk.CTkFont(size=16, weight="bold")
+            ).pack(pady=10)
+
+            table = ctk.CTkFrame(self.scroll)
+            table.pack(pady=5)
+
+            # Headers
+            ctk.CTkLabel(table, text="Name", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10)
+            ctk.CTkLabel(table, text="Amount", font=ctk.CTkFont(weight="bold")).grid(row=0, column=1, padx=10)
+
+            if not data_dict:
+                ctk.CTkLabel(table, text="No data available").grid(row=1, column=0, columnspan=2)
+                return
+
+            for i, (name, amount) in enumerate(sorted(data_dict.items()), start=1):
+                ctk.CTkLabel(table, text=str(name)).grid(row=i, column=0, padx=10)
+                ctk.CTkLabel(table, text=f"${amount:,.2f}").grid(row=i, column=1, padx=10)
+
+        # -----------------------------
+        # Totals Per Job
+        # -----------------------------
+        job_totals = df.groupby(resolved["job"])[resolved["split"]].sum().to_dict()
+        build_section("Totals Per Job", job_totals)
+
+        # -----------------------------
+        # Totals Per Pay Item
+        # -----------------------------
+        pay_item_totals = df.groupby(resolved["pay_item"])[resolved["split"]].sum().to_dict()
+        build_section("Totals Per Pay Item", pay_item_totals)
+
+        # -----------------------------
+        # Totals Per Day
+        # -----------------------------
+        day_totals = df.groupby(resolved["date"])[resolved["split"]].sum().to_dict()
+        build_section("Totals Per Day", day_totals)
+
+
 
 
 if __name__ == "__main__":
