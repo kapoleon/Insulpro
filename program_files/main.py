@@ -105,6 +105,11 @@ def append_to_master_payroll(emp, rows):
     # Path to employee's master payroll file
     path = netpath("payroll_records", "master_payroll", f"{emp.fullname}.xlsx")
 
+    # Ensure directory exists
+    directory = os.path.dirname(path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
     # Path to the master payroll template
     template = netpath("data", "spreadsheet", "MasterPayrollTemplate.xlsx")
 
@@ -116,16 +121,14 @@ def append_to_master_payroll(emp, rows):
     workbook = load_workbook(path)
     sheet = workbook.active
 
-    # Find next empty row
-    next_row = sheet.max_row + 1
-
     # Append rows
     for r in rows:
         sheet.append(r)
 
-    # Save workbook
     workbook.save(path)
     workbook.close()
+
+
 
 # =========================================================
 # Authentication Helper
@@ -1950,6 +1953,8 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
             # Loop through employee rows
             # -----------------------------
             for r in range(2, emp_sheet.max_row + 1):
+
+                # A = Date
                 date_val = emp_sheet[f"A{r}"].value
 
                 # Normalize date formats
@@ -1970,7 +1975,8 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
                 if not (start_date <= date_val <= end_date):
                     continue
 
-                split = emp_sheet[f"G{r}"].value
+                # H = Split (NEW COLUMN)
+                split = emp_sheet[f"H{r}"].value
                 if split is None:
                     continue
 
@@ -1981,7 +1987,10 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
 
                 total_pay += split
 
+                # C = Pay Item
                 pay_item = emp_sheet[f"C{r}"].value
+
+                # B = Job Name
                 job_name = emp_sheet[f"B{r}"].value
 
                 # Totals per pay item
@@ -2043,6 +2052,8 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
         workbook.close()
 
         messagebox.showinfo("Weekly Payroll Generated", f"Saved to:\n{output_path}")
+
+
 
 # =========================================================
 # View Weekly Payroll Frame
