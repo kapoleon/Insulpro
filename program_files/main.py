@@ -6,7 +6,7 @@ import datetime
 import os
 import shutil
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 # =========================================================
 # Third‑Party Libraries
@@ -14,7 +14,10 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 import pandas as pd
+import openpyxl
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font
 
 # =========================================================
 # Network Root Path
@@ -1549,7 +1552,7 @@ class PaySheetFrame(ctk.CTkFrame):
             self,
             job_name,
             date_value,
-            num_workers,
+            selected,
             results
         )
 
@@ -1713,7 +1716,7 @@ class PaySheetFrame(ctk.CTkFrame):
 class PaySplitResultsWindow(ctk.CTkToplevel):
     """Standalone window showing detailed pay split results."""
 
-    def __init__(self, master, job_name, date_value, num_workers, results):
+    def __init__(self, master, job_name, date_value, selected_usernames, results):
         super().__init__(master)
 
         self.title("Pay Split Results")
@@ -1723,12 +1726,20 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
 
         self.job_name = job_name
         self.date_value = date_value
-        self.num_workers = num_workers
+        self.selected_usernames = selected_usernames
         self.results = results
+
+        # Convert usernames → full names
+        self.employee_names = [
+            next(emp.fullname for emp in employees if emp.username == u)
+            for u in selected_usernames
+        ]
+
+        self.num_workers = len(self.employee_names)
 
         # Compute totals
         self.grand_total = sum(total for _, _, _, total, _ in results)
-        self.per_worker = self.grand_total / num_workers
+        self.per_worker = self.grand_total / self.num_workers
 
         # =====================================================
         # HEADER
@@ -1740,25 +1751,33 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
         ).pack(pady=20)
 
         # =====================================================
+        # TOP TOOLBAR BUTTONS (ALWAYS VISIBLE)
+        # =====================================================
+        toolbar = ctk.CTkFrame(self)
+        toolbar.pack(fill="x", padx=20, pady=(10, 5))
+
+        ctk.CTkButton(toolbar, text="Save to Excel", width=150,
+                      command=self.save_to_excel).pack(side="left", padx=10)
+
+        # =====================================================
         # JOB SUMMARY
         # =====================================================
         summary_frame = ctk.CTkFrame(self)
         summary_frame.pack(fill="x", padx=20, pady=10)
 
-        summary_items = [
-            f"Job Name: {job_name}",
-            f"Date: {date_value}",
-            f"Employees Selected: {num_workers}",
-            f"Total Job Pay: ${self.grand_total:.2f}",
-            f"Pay Per Worker: ${self.per_worker:.2f}"
-        ]
+        ctk.CTkLabel(summary_frame, text=f"Job Name: {job_name}", font=ctk.CTkFont(size=16)).pack(anchor="w")
+        ctk.CTkLabel(summary_frame, text=f"Date: {date_value}", font=ctk.CTkFont(size=16)).pack(anchor="w")
 
-        for item in summary_items:
-            ctk.CTkLabel(
-                summary_frame,
-                text=item,
-                font=ctk.CTkFont(size=16)
-            ).pack(anchor="w", pady=2)
+        # Employee list
+        ctk.CTkLabel(summary_frame, text="Employees Selected:", font=ctk.CTkFont(size=16)).pack(anchor="w", pady=(10, 0))
+        for name in self.employee_names:
+            ctk.CTkLabel(summary_frame, text=f"  - {name}", font=ctk.CTkFont(size=15)).pack(anchor="w")
+
+        # Totals
+        ctk.CTkLabel(summary_frame, text=f"Total Job Pay: ${self.grand_total:.2f}",
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", pady=(10, 0))
+        ctk.CTkLabel(summary_frame, text=f"Pay Per Worker: ${self.per_worker:.2f}",
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w")
 
         # =====================================================
         # SCROLLABLE BREAKDOWN
@@ -1782,80 +1801,85 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
             ctk.CTkLabel(row, text=f"Total: ${total:.2f}").pack(side="left", padx=5)
             ctk.CTkLabel(row, text=f"Split: ${split:.2f}").pack(side="left", padx=5)
 
-        # =====================================================
-        # BUTTONS
-        # =====================================================
-        btn_frame = ctk.CTkFrame(self)
-        btn_frame.pack(pady=20)
-
-        ctk.CTkButton(btn_frame, text="Save to Excel", width=150, command=self.save_to_excel).pack(side="left", padx=10)
-        ctk.CTkButton(btn_frame, text="Print Preview", width=150, command=self.print_preview).pack(side="left", padx=10)
-
     # =========================================================
-    # SAVE TO EXCEL
+    # SAVE TO EXCEL (FULL REPORT)
     # =========================================================
     def save_to_excel(self):
-        import pandas as pd
-        from tkinter import filedialog
+        # Build a clean filename
+        safe_job = self.job_name.replace(" ", "_")
+        safe_date = self.date_value.replace("/", "-").replace("\\", "-")
+        default_name = f"PaySheet_{safe_job}_{safe_date}.xlsx"
 
         save_path = filedialog.asksaveasfilename(
+            initialfile=default_name,
             defaultextension=".xlsx",
             filetypes=[("Excel Files", "*.xlsx")]
         )
         if not save_path:
             return
 
-        data = []
+        # -----------------------------
+        # Build the report structure
+        # -----------------------------
+        rows = [
+            ["Job Summary"],
+            ["Job Name:", self.job_name],
+            ["Date:", self.date_value],
+            ["Employees Selected:"]
+        ]
+
+        # Add employee names
+        for emp_name in self.employee_names:
+            rows.append(["", emp_name])
+
+        rows.append(["Total Job Pay:", f"${self.grand_total:.2f}"])
+        rows.append(["Pay Per Worker:", f"${self.per_worker:.2f}"])
+        rows.append([])
+        rows.append(["Detailed Pay Breakdown"])
+        rows.append([])
+        rows.append(["Pay Item", "Quantity", "Rate", "Total", "Split Per Worker"])
+
+        # Add table rows
         for name, qty, rate, total, split in self.results:
-            data.append({
-                "Pay Item": name,
-                "Quantity": qty,
-                "Rate": rate,
-                "Total": total,
-                "Split Per Worker": split
-            })
+            rows.append([name, qty, rate, total, split])
 
-        df = pd.DataFrame(data)
-        df.to_excel(save_path, index=False)
+        # -----------------------------
+        # Write to Excel
+        # -----------------------------
+        df = pd.DataFrame(rows)
+        df.to_excel(save_path, index=False, header=False)
 
-        messagebox.showinfo("Saved", "Pay sheet saved to Excel.")
+        # -----------------------------
+        # Format Excel
+        # -----------------------------
+        wb = openpyxl.load_workbook(save_path)
+        ws = wb.active
 
-    # =========================================================
-    # PRINT PREVIEW
-    # =========================================================
-    def print_preview(self):
-        preview = ctk.CTkToplevel(self)
-        preview.title("Print Preview")
-        preview.geometry("600x700")
-        preview.grab_set()
+        bold_font = Font(bold=True)
 
-        ctk.CTkLabel(
-            preview,
-            text=f"Pay Sheet - {self.job_name}",
-            font=ctk.CTkFont(size=24, weight="bold")
-        ).pack(pady=20)
+        ws["A1"].font = bold_font
+        ws["A8"].font = bold_font
+        ws["A10"].font = bold_font
 
-        text = tk.Text(preview, wrap="word", font=("Arial", 12))
-        text.pack(fill="both", expand=True, padx=20, pady=20)
+        # Bold table header row
+        for col in range(1, 6):
+            ws[f"{get_column_letter(col)}11"].font = bold_font
 
-        # Build printable text
-        printable = f"Job Name: {self.job_name}\n"
-        printable += f"Date: {self.date_value}\n"
-        printable += f"Employees: {self.num_workers}\n"
-        printable += f"Total Job Pay: ${self.grand_total:.2f}\n"
-        printable += f"Pay Per Worker: ${self.per_worker:.2f}\n\n"
-        printable += "Detailed Breakdown:\n\n"
+        # Auto-size columns
+        for col in ws.columns:
+            max_length = 0
+            col_letter = get_column_letter(col[0].column)
 
-        for name, qty, rate, total, split in self.results:
-            printable += (
-                f"{name}\n"
-                f"  Qty: {qty}\n"
-                f"  Rate: ${rate:.2f}\n"
-                f"  Total: ${total:.2f}\n"
-                f"  Split: ${split:.2f}\n\n"
-            )
+            for cell in col:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
 
-        text.insert("1.0", printable)
+            ws.column_dimensions[col_letter].width = max_length + 2
+
+        wb.save(save_path)
+
+        messagebox.showinfo("Saved", "Detailed job report saved to Excel.")
+
 
 
 # =========================================================
