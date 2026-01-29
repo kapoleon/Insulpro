@@ -6,18 +6,18 @@ import datetime
 import os
 import shutil
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox
+
+import customtkinter as ctk
+import openpyxl
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 # =========================================================
 # Third‑Party Libraries
 # =========================================================
-
-import customtkinter as ctk
-import pandas as pd
-import openpyxl
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font
 
 # =========================================================
 # Network Root Path
@@ -101,44 +101,29 @@ ensure_file_exists(REQUEST_FILE, REQUEST_TEMPLATE)
 # ---------------------------------------------------------
 # Helper to append master_payroll file
 # ---------------------------------------------------------
-def append_to_master_payroll(emp: Employee, rows: list):
-    """
-    rows = list of tuples:
-    (date, job_name, pay_item, qty, rate, total, split)
-    """
+def append_to_master_payroll(emp, rows):
+    # Path to employee's master payroll file
+    path = netpath("payroll_records", "master_payroll", f"{emp.fullname}.xlsx")
 
-    filename = f"{emp.fullname}.xlsx"
-    path = os.path.join(MASTER_PAYROLL_DIR, filename)
+    # Path to the master payroll template
+    template = netpath("data", "spreadsheet", "MasterPayrollTemplate.xlsx")
 
-    # If file doesn't exist, create it with headers
+    # If file does not exist, create it from template
     if not os.path.exists(path):
-        workbook = load_workbook(netpath("data", "spreadsheet", "MasterPayrollTemplate.xlsx"))
-        sheet = workbook.active
-        _ = sheet  # prevents false unused-variable warnings
-        workbook.save(path)
-        workbook.close()
+        shutil.copy(template, path)
 
-    # Open existing file
+    # Load workbook
     workbook = load_workbook(path)
     sheet = workbook.active
 
     # Find next empty row
-    row = sheet.max_row + 1
-    while all(sheet[f"{col}{row}"].value is None for col in "ABCDEFG"):
-        row -= 1
-    row += 1
+    next_row = sheet.max_row + 1
 
     # Append rows
     for r in rows:
-        sheet[f"A{row}"] = r[0]  # Date
-        sheet[f"B{row}"] = r[1]  # Job Name
-        sheet[f"C{row}"] = r[2]  # Pay Item
-        sheet[f"D{row}"] = r[3]  # Quantity
-        sheet[f"E{row}"] = r[4]  # Rate
-        sheet[f"F{row}"] = r[5]  # Total
-        sheet[f"G{row}"] = r[6]  # Split
-        row += 1
+        sheet.append(r)
 
+    # Save workbook
     workbook.save(path)
     workbook.close()
 
@@ -1405,13 +1390,6 @@ class PaySheetFrame(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_frame,
-            text="Save Pay Sheet",
-            width=200,
-            command=self.save_paysheet
-        ).pack(pady=10)
-
-        ctk.CTkButton(
-            btn_frame,
             text="Reset Form",
             width=200,
             command=self.reset_form
@@ -1535,8 +1513,10 @@ class PaySheetFrame(ctk.CTkFrame):
             rate = payrates[key].rate
             total = qty * rate
             split = total / num_workers
+            qty_split = qty / num_workers  # NEW FIELD
 
-            results.append((payrates[key].name, qty, rate, total, split))
+            # Updated tuple now includes qty_split
+            results.append((payrates[key].name, qty, rate, total, split, qty_split))
 
         # -----------------------------
         # No quantities entered
@@ -1555,140 +1535,6 @@ class PaySheetFrame(ctk.CTkFrame):
             selected,
             results
         )
-
-    # =========================================================
-    # SAVE PAY SHEET TO EXCEL
-    # =========================================================
-    def save_paysheet(self):
-        # -----------------------------
-        # Validate job name and date
-        # -----------------------------
-        job_name = self.jobname_entry.get().strip()
-        date_value = self.date_entry.get().strip()
-
-        if not job_name:
-            messagebox.showerror("Missing Job Name", "Please enter a job name.")
-            return
-
-        if not date_value:
-            messagebox.showerror("Missing Date", "Please enter a date.")
-            return
-
-        # -----------------------------
-        # Collect selected employees
-        # -----------------------------
-        selected_emps = [
-            emp for emp in employees
-            if self.employee_vars[emp.username].get()
-        ]
-
-        if not selected_emps:
-            messagebox.showerror("No Employees Selected", "Select at least one employee.")
-            return
-
-        num_workers = len(selected_emps)
-
-        # -----------------------------
-        # Collect payrate entries
-        # -----------------------------
-        pay_items = []
-
-        for key, entry in self.payrate_entries.items():
-            qty_text = entry.get().strip()
-            if not qty_text:
-                continue
-
-            try:
-                qty = float(qty_text)
-            except ValueError:
-                messagebox.showerror(
-                    "Invalid Quantity",
-                    f"Invalid number for {payrates[key].name}"
-                )
-                return
-
-            rate = payrates[key].rate
-            total = qty * rate
-            split = total / num_workers
-
-            pay_items.append((payrates[key].name, qty, rate, total, split))
-
-        if not pay_items:
-            messagebox.showerror("No Pay Items", "Enter at least one quantity.")
-            return
-
-        # -----------------------------
-        # Create paysheet file
-        # -----------------------------
-        template = netpath("data", "spreadsheet", "PaySheetTemplate.xlsx")
-        save_dir = netpath("payroll_records", "paysheets")
-
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-
-        filename = f"{job_name}.xlsx"
-        new_path = os.path.join(save_dir, filename)
-
-        # Prevent overwriting existing file
-        if os.path.exists(new_path):
-            messagebox.showerror(
-                "File Already Exists",
-                f"A pay sheet named '{filename}' already exists.\n"
-                "Please choose a different job name."
-            )
-            return
-
-        shutil.copy(template, new_path)
-
-        # -----------------------------
-        # Write data into Excel
-        # -----------------------------
-        workbook = load_workbook(new_path)
-        sheet = workbook.active
-
-        # Header
-        sheet["B1"] = job_name
-        sheet["B2"] = date_value
-
-        # Employees
-        row = 5
-        for emp in selected_emps:
-            sheet[f"A{row}"] = emp.fullname
-            row += 1
-
-        # Pay Items
-        row = 5
-        for name, qty, rate, total, split in pay_items:
-            sheet[f"C{row}"] = name
-            sheet[f"D{row}"] = qty
-            sheet[f"E{row}"] = rate
-            sheet[f"F{row}"] = total
-            sheet[f"G{row}"] = split
-            row += 1
-
-        workbook.save(new_path)
-        workbook.close()
-
-        # -----------------------------
-        # Update master payroll files
-        # -----------------------------
-        for emp in selected_emps:
-            rows = []
-            for name, qty, rate, total, split in pay_items:
-                rows.append((
-                    date_value,
-                    job_name,
-                    name,
-                    qty,
-                    rate,
-                    total,
-                    split
-                ))
-            append_to_master_payroll(emp, rows)
-
-        messagebox.showinfo("Saved", f"Pay sheet saved:\n{new_path}")
-
-        self.reset_form()
 
     # =========================================================
     # RESET FORM
@@ -1727,7 +1573,7 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
         self.job_name = job_name
         self.date_value = date_value
         self.selected_usernames = selected_usernames
-        self.results = results
+        self.results = results  # (name, qty, rate, total, split, qty_split)
 
         # Convert usernames → full names
         self.employee_names = [
@@ -1738,7 +1584,7 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
         self.num_workers = len(self.employee_names)
 
         # Compute totals
-        self.grand_total = sum(total for _, _, _, total, _ in results)
+        self.grand_total = sum(total for _, _, _, total, _, _ in results)
         self.per_worker = self.grand_total / self.num_workers
 
         # =====================================================
@@ -1751,13 +1597,17 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
         ).pack(pady=20)
 
         # =====================================================
-        # TOP TOOLBAR BUTTONS (ALWAYS VISIBLE)
+        # TOP TOOLBAR BUTTONS
         # =====================================================
         toolbar = ctk.CTkFrame(self)
         toolbar.pack(fill="x", padx=20, pady=(10, 5))
 
-        ctk.CTkButton(toolbar, text="Save to Excel", width=150,
-                      command=self.save_to_excel).pack(side="left", padx=10)
+        ctk.CTkButton(
+            toolbar,
+            text="Save Paysheet",
+            width=150,
+            command=self.save_paysheet
+        ).pack(side="left", padx=10)
 
         # =====================================================
         # JOB SUMMARY
@@ -1765,19 +1615,41 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
         summary_frame = ctk.CTkFrame(self)
         summary_frame.pack(fill="x", padx=20, pady=10)
 
-        ctk.CTkLabel(summary_frame, text=f"Job Name: {job_name}", font=ctk.CTkFont(size=16)).pack(anchor="w")
-        ctk.CTkLabel(summary_frame, text=f"Date: {date_value}", font=ctk.CTkFont(size=16)).pack(anchor="w")
+        ctk.CTkLabel(
+            summary_frame,
+            text=f"Job Name: {job_name}",
+            font=ctk.CTkFont(size=16)
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            summary_frame,
+            text=f"Date: {date_value}",
+            font=ctk.CTkFont(size=16)
+        ).pack(anchor="w")
 
         # Employee list
-        ctk.CTkLabel(summary_frame, text="Employees Selected:", font=ctk.CTkFont(size=16)).pack(anchor="w", pady=(10, 0))
+        ctk.CTkLabel(
+            summary_frame,
+            text="Employees Selected:",
+            font=ctk.CTkFont(size=16)
+        ).pack(anchor="w", pady=(10, 0))
         for name in self.employee_names:
-            ctk.CTkLabel(summary_frame, text=f"  - {name}", font=ctk.CTkFont(size=15)).pack(anchor="w")
+            ctk.CTkLabel(
+                summary_frame,
+                text=f"  - {name}",
+                font=ctk.CTkFont(size=15)
+            ).pack(anchor="w")
 
         # Totals
-        ctk.CTkLabel(summary_frame, text=f"Total Job Pay: ${self.grand_total:.2f}",
-                     font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", pady=(10, 0))
-        ctk.CTkLabel(summary_frame, text=f"Pay Per Worker: ${self.per_worker:.2f}",
-                     font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(
+            summary_frame,
+            text=f"Total Job Pay: ${self.grand_total:.2f}",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w", pady=(10, 0))
+        ctk.CTkLabel(
+            summary_frame,
+            text=f"Pay Per Worker: ${self.per_worker:.2f}",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w")
 
         # =====================================================
         # SCROLLABLE BREAKDOWN
@@ -1791,12 +1663,13 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(size=18, weight="bold")
         ).pack(pady=10)
 
-        for name, qty, rate, total, split in results:
+        for name, qty, rate, total, split, qty_split in results:
             row = ctk.CTkFrame(detail_frame)
             row.pack(fill="x", pady=5)
 
             ctk.CTkLabel(row, text=name, width=180, anchor="w").pack(side="left", padx=5)
             ctk.CTkLabel(row, text=f"Qty: {qty}").pack(side="left", padx=5)
+            ctk.CTkLabel(row, text=f"Qty Split: {qty_split}").pack(side="left", padx=5)
             ctk.CTkLabel(row, text=f"Rate: ${rate:.2f}").pack(side="left", padx=5)
             ctk.CTkLabel(row, text=f"Total: ${total:.2f}").pack(side="left", padx=5)
             ctk.CTkLabel(row, text=f"Split: ${split:.2f}").pack(side="left", padx=5)
@@ -1804,23 +1677,36 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
     # =========================================================
     # SAVE TO EXCEL (FULL REPORT)
     # =========================================================
-    def save_to_excel(self):
-        # Build a clean filename
+    def save_paysheet(self):
+        # -----------------------------------------
+        # Build paysheet directory
+        # -----------------------------------------
+        save_dir = netpath("payroll_records", "paysheets")
+
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        # -----------------------------------------
+        # Build automatic filename
+        # -----------------------------------------
         safe_job = self.job_name.replace(" ", "_")
         safe_date = self.date_value.replace("/", "-").replace("\\", "-")
-        default_name = f"PaySheet_{safe_job}_{safe_date}.xlsx"
+        filename = f"PaySheet_{safe_job}_{safe_date}.xlsx"
 
-        save_path = filedialog.asksaveasfilename(
-            initialfile=default_name,
-            defaultextension=".xlsx",
-            filetypes=[("Excel Files", "*.xlsx")]
-        )
-        if not save_path:
+        save_path = os.path.join(save_dir, filename)
+
+        # Prevent overwriting
+        if os.path.exists(save_path):
+            messagebox.showerror(
+                "File Already Exists",
+                f"A paysheet named '{filename}' already exists.\n"
+                "Please change the job name or date."
+            )
             return
 
-        # -----------------------------
-        # Build the report structure
-        # -----------------------------
+        # -----------------------------------------
+        # Build report structure
+        # -----------------------------------------
         rows = [
             ["Job Summary"],
             ["Job Name:", self.job_name],
@@ -1832,38 +1718,44 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
         for emp_name in self.employee_names:
             rows.append(["", emp_name])
 
+        # Totals
         rows.append(["Total Job Pay:", f"${self.grand_total:.2f}"])
-        rows.append(["Pay Per Worker:", f"${self.per_worker:.2f}"])
+
         rows.append([])
         rows.append(["Detailed Pay Breakdown"])
         rows.append([])
-        rows.append(["Pay Item", "Quantity", "Rate", "Total", "Split Per Worker"])
+        rows.append(["Pay Item", "Quantity", "Qty Split", "Rate", "Total", "Split Per Worker"])
 
         # Add table rows
-        for name, qty, rate, total, split in self.results:
-            rows.append([name, qty, rate, total, split])
+        for name, qty, rate, total, split, qty_split in self.results:
+            rows.append([name, qty, qty_split, rate, total, split])
 
-        # -----------------------------
+        # -----------------------------------------
         # Write to Excel
-        # -----------------------------
+        # -----------------------------------------
         df = pd.DataFrame(rows)
         df.to_excel(save_path, index=False, header=False)
 
-        # -----------------------------
+        # -----------------------------------------
         # Format Excel
-        # -----------------------------
+        # -----------------------------------------
         wb = openpyxl.load_workbook(save_path)
         ws = wb.active
 
         bold_font = Font(bold=True)
 
         ws["A1"].font = bold_font
-        ws["A8"].font = bold_font
-        ws["A10"].font = bold_font
 
-        # Bold table header row
-        for col in range(1, 6):
-            ws[f"{get_column_letter(col)}11"].font = bold_font
+        # Bold summary labels in col A (first few rows)
+        for r in range(1, 15):
+            cell = ws[f"A{r}"]
+            if cell.value:
+                cell.font = bold_font
+
+        # Bold table header row (now 6 columns)
+        header_row = 11  # based on current layout
+        for col in range(1, 7):
+            ws[f"{get_column_letter(col)}{header_row}"].font = bold_font
 
         # Auto-size columns
         for col in ws.columns:
@@ -1877,9 +1769,36 @@ class PaySplitResultsWindow(ctk.CTkToplevel):
             ws.column_dimensions[col_letter].width = max_length + 2
 
         wb.save(save_path)
+        wb.close()
 
-        messagebox.showinfo("Saved", "Detailed job report saved to Excel.")
+        # -----------------------------------------
+        # Update master payroll files
+        # -----------------------------------------
+        # Master template columns (in order) should be:
+        # Date | Job Name | Pay Item | Quantity | Qty Split | Rate | Total | Split | Job Total For Employee
+        for emp_username in self.selected_usernames:
+            emp_obj = next(e for e in employees if e.username == emp_username)
 
+            rows_to_append = []
+            for name, qty, rate, total, split, qty_split in self.results:
+                rows_to_append.append((
+                    self.date_value,
+                    self.job_name,
+                    name,
+                    qty,
+                    qty_split,
+                    rate,
+                    total,
+                    split
+                ))
+
+            append_to_master_payroll(emp_obj, rows_to_append)
+
+        # -----------------------------------------
+        # Notify + close window
+        # -----------------------------------------
+        messagebox.showinfo("Saved", f"Paysheet saved:\n{save_path}")
+        self.destroy()
 
 
 # =========================================================
