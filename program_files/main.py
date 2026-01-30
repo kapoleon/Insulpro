@@ -15,9 +15,6 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-# =========================================================
-# Third‑Party Libraries
-# =========================================================
 
 # =========================================================
 # Network Root Path
@@ -3450,8 +3447,6 @@ class VacationRequestApprovalFrame(ctk.CTkFrame):
         sheet[f"F{next_row}"] = rate
         sheet[f"G{next_row}"] = total
         sheet[f"H{next_row}"] = total
-        sheet[f"I{next_row}"] = total
-
         book.save(path)
         book.close()
 
