@@ -268,15 +268,16 @@ COL_PAYRATE_RATE = "rate"
 # =========================================================
 # Helper: Clean dictionary keys
 # =========================================================
-def clean_key(text):
+def clean_key(name):
     return (
-        text.lower()
+        name.lower()
         .replace(" ", "_")
         .replace("/", "_")
         .replace('"', "")
-        .replace(">", "")
-        .replace("<", "")
+        .replace(">", "_gt_")
+        .replace("<", "_lt_")
     )
+
 
 
 # =========================================================
@@ -303,8 +304,6 @@ class Payrate:
 # Load Payrates from Excel
 # =========================================================
 def load_payrates_from_excel(path):
-    """Load payrate records from an Excel file into a dictionary."""
-
     if not os.path.exists(path):
         print(f"WARNING: Payrate file not found at: {path}")
         print("Payrate list initialized as empty.")
@@ -318,15 +317,25 @@ def load_payrates_from_excel(path):
     loaded_payrates = {}
 
     for _, row in df.iterrows():
-        name = str(row[COL_PAYRATE_NAME]).strip()
-        rate = float(row[COL_PAYRATE_RATE])
+        name = row.get(COL_PAYRATE_NAME)
+        rate = row.get(COL_PAYRATE_RATE)
 
-        payrate_obj = Payrate(name, rate)
+        # Skip header rows, blanks, NaN, or invalid rows
+        if not isinstance(name, str):
+            continue
+        if name.strip().lower() == COL_PAYRATE_NAME.lower():
+            continue
+        if pd.isna(rate):
+            continue
+
+        name = name.strip()
+        rate = float(rate)
+
         key = clean_key(name)
-
-        loaded_payrates[key] = payrate_obj
+        loaded_payrates[key] = Payrate(name, rate)
 
     return loaded_payrates
+
 
 
 # =========================================================
@@ -1443,16 +1452,20 @@ class PaySheetFrame(ctk.CTkFrame):
         # Reset dictionary
         self.payrate_entries.clear()
 
-        # Re-add header
-        ctk.CTkLabel(
+        header = ctk.CTkLabel(
             self.rate_frame,
             text="Enter Quantities:",
             font=ctk.CTkFont(size=16, weight="bold")
-        ).pack(pady=5)
+        )
+        header.pack(pady=(5, 10))
+
+        # Container for payrate rows
+        container = ctk.CTkFrame(self.rate_frame)
+        container.pack(fill="both", expand=True)
 
         # Build fresh list
         for key, pr in payrates.items():
-            row = ctk.CTkFrame(self.rate_frame)
+            row = ctk.CTkFrame(container)
             row.pack(fill="x", pady=3)
 
             ctk.CTkLabel(row, text=pr.name, width=180, anchor="w").pack(side="left", padx=5)
@@ -2150,26 +2163,35 @@ class ViewWeeklyPayrollFrame(ctk.CTkFrame):
         sheet = book.active
 
         # -----------------------------
-        # Weekly Summary
+        # Weekly Summary + Date Range
         # -----------------------------
-        summary = ctk.CTkLabel(
+        start_date = sheet["B2"].value
+        end_date = sheet["B3"].value
+        weekly_total = sheet["E2"].value
+
+        ctk.CTkLabel(
             self.scroll,
-            text=f"Weekly Total: {sheet['E2'].value}",
+            text=f"Week: {start_date} to {end_date}",
             font=ctk.CTkFont(size=18, weight="bold")
-        )
-        summary.pack(pady=10)
+        ).pack(pady=(10, 0))
+
+        ctk.CTkLabel(
+            self.scroll,
+            text=f"Weekly Total: {weekly_total}",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(pady=(0, 20))
 
         # -----------------------------
         # Sections to Display
         # -----------------------------
         sections = [
-            ("Employee Totals",      "A", "B"),
-            ("Totals Per Pay Item",  "D", "E"),
-            ("Totals Per Job",       "G", "H"),
-            ("Totals Per Day",       "J", "K")
+            ("Employee Totals", "A", "B", False),  # no sorting
+            ("Totals Per Pay Item", "D", "E", True),  # sort alphabetically
+            ("Totals Per Job", "G", "H", True),  # sort alphabetically
+            ("Totals Per Day", "J", "K", False)  # keep chronological
         ]
 
-        for title, col1, col2 in sections:
+        for title, col1, col2, sort_rows in sections:
 
             # Section Title
             ctk.CTkLabel(
@@ -2181,18 +2203,16 @@ class ViewWeeklyPayrollFrame(ctk.CTkFrame):
             table = ctk.CTkFrame(self.scroll)
             table.pack(pady=5)
 
-            # Header Row
-            ctk.CTkLabel(
-                table,
-                text="Name",
-                font=ctk.CTkFont(weight="bold")
-            ).grid(row=0, column=0, padx=10)
+            # Column headers
+            header1 = {
+                "Employee Totals": "Employee",
+                "Totals Per Pay Item": "Pay Item",
+                "Totals Per Job": "Job Name",
+                "Totals Per Day": "Date"
+            }.get(title, "Name")
 
-            ctk.CTkLabel(
-                table,
-                text="Amount",
-                font=ctk.CTkFont(weight="bold")
-            ).grid(row=0, column=1, padx=10)
+            ctk.CTkLabel(table, text=header1, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10)
+            ctk.CTkLabel(table, text="Amount", font=ctk.CTkFont(weight="bold")).grid(row=0, column=1, padx=10)
 
             # Read rows
             rows = []
@@ -2202,35 +2222,32 @@ class ViewWeeklyPayrollFrame(ctk.CTkFrame):
                 v1 = sheet[f"{col1}{row}"].value
                 v2 = sheet[f"{col2}{row}"].value
 
+                # Stop only after 2 consecutive empty rows
                 if v1 is None and v2 is None:
-                    break
+                    # Check next row to confirm end of section
+                    v1_next = sheet[f"{col1}{row + 1}"].value
+                    v2_next = sheet[f"{col2}{row + 1}"].value
+                    if v1_next is None and v2_next is None:
+                        break
 
-                rows.append((v1, v2))
+                if v1 is not None or v2 is not None:
+                    rows.append((v1, v2))
+
                 row += 1
 
             # No data case
             if not rows:
-                ctk.CTkLabel(
-                    table,
-                    text="No data available"
-                ).grid(row=1, column=0, columnspan=2)
+                ctk.CTkLabel(table, text="No data available").grid(row=1, column=0, columnspan=2)
                 continue
 
-            # Display rows
-            for i, (v1, v2) in enumerate(sorted(rows), start=1):
-                ctk.CTkLabel(
-                    table,
-                    text=str(v1),
-                    width=200,
-                    anchor="w"
-                ).grid(row=i, column=0, padx=10)
+            # Sort if needed
+            if sort_rows:
+                rows = sorted(rows)
 
-                ctk.CTkLabel(
-                    table,
-                    text=str(v2),
-                    width=200,
-                    anchor="w"
-                ).grid(row=i, column=1, padx=10)
+            # Display rows
+            for i, (v1, v2) in enumerate(rows, start=1):
+                ctk.CTkLabel(table, text=str(v1), width=200, anchor="w").grid(row=i, column=0, padx=10)
+                ctk.CTkLabel(table, text=str(v2), width=200, anchor="w").grid(row=i, column=1, padx=10)
 
         book.close()
 
@@ -2277,16 +2294,12 @@ class YTDPayrollFrame(ctk.CTkFrame):
         form.pack(pady=20)
 
         # Year
-        ctk.CTkLabel(form, text="Year:").grid(
-            row=0, column=0, padx=10, pady=5
-        )
+        ctk.CTkLabel(form, text="Year:").grid(row=0, column=0, padx=10, pady=5)
         self.year_entry = ctk.CTkEntry(form, width=150)
         self.year_entry.grid(row=0, column=1, padx=10, pady=5)
 
         # Employee Filter
-        ctk.CTkLabel(form, text="Employee (optional):").grid(
-            row=1, column=0, padx=10, pady=5
-        )
+        ctk.CTkLabel(form, text="Employee (optional):").grid(row=1, column=0, padx=10, pady=5)
         self.employee_option = ctk.CTkComboBox(
             form,
             values=["All"] + [emp.fullname for emp in employees],
@@ -2295,12 +2308,9 @@ class YTDPayrollFrame(ctk.CTkFrame):
         self.employee_option.grid(row=1, column=1, padx=10, pady=5)
         self.employee_option.set("All")
 
-        # Job Filter Options
+        # Job Filter
         jobs, payitems = self.collect_job_and_payitems()
-
-        ctk.CTkLabel(form, text="Job (optional):").grid(
-            row=2, column=0, padx=10, pady=5
-        )
+        ctk.CTkLabel(form, text="Job (optional):").grid(row=2, column=0, padx=10, pady=5)
         self.job_option = ctk.CTkComboBox(
             form,
             values=["All"] + jobs,
@@ -2309,9 +2319,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
         self.job_option.grid(row=2, column=1, padx=10, pady=5)
         self.job_option.set("All")
 
-        # -----------------------------
         # Generate Button
-        # -----------------------------
         ctk.CTkButton(
             self,
             text="Generate YTD Payroll Summary",
@@ -2368,15 +2376,11 @@ class YTDPayrollFrame(ctk.CTkFrame):
         job_filter = self.job_option.get()
 
         # Normalize job filter
-        if job_filter == "All":
-            job_filter = ""
+        job_filter = "" if job_filter == "All" else job_filter.lower()
 
         # Validate year
         if not year_text.isdigit():
-            messagebox.showerror(
-                "Invalid Year",
-                "Please enter a valid year (e.g., 2025)."
-            )
+            messagebox.showerror("Invalid Year", "Please enter a valid year (e.g., 2025).")
             return
 
         year = int(year_text)
@@ -2393,9 +2397,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
         # -----------------------------
         # Load template
         # -----------------------------
-        workbook = load_workbook(
-            netpath("data", "spreadsheet", "YTDPayrollTemplate.xlsx")
-        )
+        workbook = load_workbook(netpath("data", "spreadsheet", "YTDPayrollTemplate.xlsx"))
         sheet = workbook.active
 
         sheet["A3"] = "Year:"
@@ -2438,9 +2440,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
 
                 if isinstance(date_val, str):
                     try:
-                        date_val = datetime.datetime.strptime(
-                            date_val, "%m-%d-%Y"
-                        ).date()
+                        date_val = datetime.datetime.strptime(date_val, "%m-%d-%Y").date()
                     except ValueError:
                         continue
 
@@ -2451,37 +2451,35 @@ class YTDPayrollFrame(ctk.CTkFrame):
                     continue
 
                 # Filters
-                job_name = str(emp_sheet[f"B{r}"].value).lower()
-                pay_item = str(emp_sheet[f"C{r}"].value).lower()
+                job_name = emp_sheet[f"B{r}"].value
+                pay_item = emp_sheet[f"C{r}"].value
+
+                job_name = str(job_name).lower() if job_name else ""
+                pay_item = str(pay_item).lower() if pay_item else ""
 
                 if job_filter and job_filter not in job_name:
                     continue
 
-                split = emp_sheet[f"G{r}"].value
+                # Split is now column H
+                split = emp_sheet[f"H{r}"].value
                 if not split:
                     continue
 
                 try:
                     split = float(split)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     continue
 
                 # Employee totals
-                employee_totals[emp.fullname] = (
-                    employee_totals.get(emp.fullname, 0) + split
-                )
+                employee_totals[emp.fullname] = employee_totals.get(emp.fullname, 0) + split
 
                 # Pay item totals
                 if pay_item:
-                    pay_item_totals[pay_item] = (
-                        pay_item_totals.get(pay_item, 0) + split
-                    )
+                    pay_item_totals[pay_item] = pay_item_totals.get(pay_item, 0) + split
 
                 # Job totals
                 if job_name:
-                    job_totals[job_name] = (
-                        job_totals.get(job_name, 0) + split
-                    )
+                    job_totals[job_name] = job_totals.get(job_name, 0) + split
 
                 # Month totals
                 month = date_val.strftime("%B")
@@ -2495,7 +2493,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
         row = 5
 
         # Employee totals
-        sheet["A4"] = "Employee Totals"
+        sheet["A4"] = "Employee"
         for name, total in employee_totals.items():
             sheet[f"A{row}"] = name
             sheet[f"B{row}"] = total
@@ -2503,7 +2501,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
 
         # Pay item totals
         row = 5
-        sheet["D4"] = "Pay Item Totals"
+        sheet["D4"] = "Pay Item"
         for item, total in pay_item_totals.items():
             sheet[f"D{row}"] = item
             sheet[f"E{row}"] = total
@@ -2511,7 +2509,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
 
         # Job totals
         row = 5
-        sheet["G4"] = "Job Totals"
+        sheet["G4"] = "Job"
         for job, total in job_totals.items():
             sheet[f"G{row}"] = job
             sheet[f"H{row}"] = total
@@ -2519,7 +2517,7 @@ class YTDPayrollFrame(ctk.CTkFrame):
 
         # Month totals
         row = 5
-        sheet["J4"] = "Month Totals"
+        sheet["J4"] = "Month"
         for month, total in month_totals.items():
             sheet[f"J{row}"] = month
             sheet[f"K{row}"] = total
@@ -2539,11 +2537,12 @@ class YTDPayrollFrame(ctk.CTkFrame):
             f"Saved to:\n{output_path}"
         )
 
+
 # =========================================================
-# View YTD Payroll Summary Frame
+# View YTD Payroll Summary Frame (Rewritten & Polished)
 # =========================================================
 class ViewYTDSummaryFrame(ctk.CTkFrame):
-    """Displays YTD payroll summary with section selector."""
+    """Displays YTD payroll summary with clean UI and section selector."""
 
     def __init__(self, master):
         super().__init__(master)
@@ -2551,7 +2550,7 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         self.place(relwidth=1, relheight=1)
 
         # -----------------------------
-        # Top-Left Back Button
+        # Back Button (Top Left)
         # -----------------------------
         ctk.CTkButton(
             self,
@@ -2568,7 +2567,7 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
             text="YTD Payroll Summary Viewer",
             font=ctk.CTkFont(size=28, weight="bold")
         )
-        title.pack(pady=60)
+        title.pack(pady=(60, 20))
 
         # -----------------------------
         # Filter Controls
@@ -2577,16 +2576,12 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         filter_frame.pack(pady=10)
 
         # Year
-        ctk.CTkLabel(filter_frame, text="Year:").grid(
-            row=0, column=0, padx=10, pady=10
-        )
+        ctk.CTkLabel(filter_frame, text="Year:").grid(row=0, column=0, padx=10, pady=10)
         self.year_entry = ctk.CTkEntry(filter_frame, width=150)
         self.year_entry.grid(row=0, column=1, padx=10, pady=10)
 
         # Section Selector
-        ctk.CTkLabel(filter_frame, text="Section:").grid(
-            row=1, column=0, padx=10, pady=10
-        )
+        ctk.CTkLabel(filter_frame, text="Section:").grid(row=1, column=0, padx=10, pady=10)
         self.section_option = ctk.CTkOptionMenu(
             filter_frame,
             values=[
@@ -2598,7 +2593,7 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         )
         self.section_option.grid(row=1, column=1, padx=10, pady=10)
 
-        # View Button
+        # Load Button
         ctk.CTkButton(
             filter_frame,
             text="Load Summary",
@@ -2607,9 +2602,9 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         ).grid(row=2, column=0, columnspan=2, pady=20)
 
         # -----------------------------
-        # Scrollable Table
+        # Scrollable Table Area
         # -----------------------------
-        self.table_frame = ctk.CTkScrollableFrame(self, width=900, height=400)
+        self.table_frame = ctk.CTkScrollableFrame(self, width=900, height=450)
         self.table_frame.pack(pady=20)
 
         # -----------------------------
@@ -2646,12 +2641,12 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         if not year_text.isdigit():
             ctk.CTkLabel(
                 self.table_frame,
-                text="Invalid year. Enter a number like 2025.",
+                text="Invalid year. Enter a number like 2026.",
                 font=ctk.CTkFont(size=16)
             ).pack(pady=20)
             return
 
-        year = int(year_text)
+        year = int(year_text)  # <-- FIX: year stays an integer
 
         # Load YTD file
         save_dir = netpath("payroll_records", "ytd payroll")
@@ -2670,34 +2665,35 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
         # Determine which section to display
         section = self.section_option.get()
 
-        if section == "Employee Totals":
-            display_df = df.iloc[:, 0:2]
-            display_df.columns = ["Employee", "Total"]
+        column_map = {
+            "Employee Totals": ("A", "B", "Employee", "Total"),
+            "Pay Item Totals": ("D", "E", "Pay Item", "Total"),
+            "Job Totals": ("G", "H", "Job", "Total"),
+            "Month Totals": ("J", "K", "Month", "Total")
+        }
 
-        elif section == "Pay Item Totals":
-            display_df = df.iloc[:, 3:5]
-            display_df.columns = ["Pay Item", "Total"]
+        col1_letter, col2_letter, header1, header2 = column_map[section]
 
-        elif section == "Job Totals":
-            display_df = df.iloc[:, 6:8]
-            display_df.columns = ["Job", "Total"]
+        # Convert Excel column letters to DataFrame indices
+        col1 = ord(col1_letter) - ord("A")
+        col2 = ord(col2_letter) - ord("A")
 
-        elif section == "Month Totals":
-            display_df = df.iloc[:, 9:11]
-            display_df.columns = ["Month", "Total"]
-
-        else:
-            ctk.CTkLabel(
-                self.table_frame,
-                text="Unknown section.",
-                font=ctk.CTkFont(size=16)
-            ).pack(pady=20)
-            return
+        display_df = df.iloc[:, [col1, col2]]
+        display_df.columns = [header1, header2]
 
         # -----------------------------
-        # FIX: Remove empty rows (NaN rows)
+        # CLEAN BAD ROWS
         # -----------------------------
         display_df = display_df.dropna(how="all")
+
+        # Remove summary/header rows
+        bad_values = ["grand total", "year", "nan", "none", "employee"]
+        first_col = display_df.columns[0]
+
+        display_df = display_df[
+            display_df[first_col].notna() &
+            ~display_df[first_col].astype(str).str.strip().str.lower().isin(bad_values)
+            ]
 
         if display_df.empty:
             ctk.CTkLabel(
@@ -2708,24 +2704,26 @@ class ViewYTDSummaryFrame(ctk.CTkFrame):
             return
 
         # -----------------------------
-        # Table Headers
+        # TABLE HEADERS
         # -----------------------------
         for col, text in enumerate(display_df.columns):
             ctk.CTkLabel(
                 self.table_frame,
                 text=text,
-                font=ctk.CTkFont(weight="bold")
+                font=ctk.CTkFont(size=15, weight="bold")
             ).grid(row=0, column=col, padx=10, pady=5)
 
         # -----------------------------
-        # Table Rows
+        # TABLE ROWS
         # -----------------------------
         for row_index, row in enumerate(display_df.itertuples(index=False), start=1):
             for col_index, value in enumerate(row):
                 ctk.CTkLabel(
                     self.table_frame,
-                    text=str(value)
+                    text=str(value),
+                    anchor="w"
                 ).grid(row=row_index, column=col_index, padx=10, pady=5)
+
 
 # =========================================================
 # Vacation Tools Menu Frame
