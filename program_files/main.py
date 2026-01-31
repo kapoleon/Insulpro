@@ -15,7 +15,6 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-
 # =========================================================
 # Network Root Path
 # (Update this if the network drive or folder changes)
@@ -28,9 +27,11 @@ if USE_NETWORK:
 else:
     NETWORK_ROOT = r"D:\Insulpro"
 
+
 def netpath(*parts):
     """Build a full path inside the network root."""
     return os.path.join(NETWORK_ROOT, *parts)
+
 
 # =========================================================
 # Startup Log
@@ -52,28 +53,30 @@ def startup_log():
     print("Opening Login Manager...")
     print("----------------------------------")
 
+
 startup_log()
 
 # =========================================================
 # File Paths
 # =========================================================
 
-EMPLOYEE_FILE        = netpath("data", "employees.xlsx")
-PAYRATE_FILE         = netpath("data", "payrates.xlsx")
+EMPLOYEE_FILE = netpath("data", "employees.xlsx")
+PAYRATE_FILE = netpath("data", "payrates.xlsx")
 
 # Vacation Log
-VACATION_TEMPLATE    = netpath("data", "spreadsheet", "VacationLogTemplate.xlsx")
-VACATION_LOG         = netpath("payroll_records", "vacation", "vacation_log.xlsx")
+VACATION_TEMPLATE = netpath("data", "spreadsheet", "VacationLogTemplate.xlsx")
+VACATION_LOG = netpath("payroll_records", "vacation", "vacation_log.xlsx")
 
 # Vacation Requests
-REQUEST_TEMPLATE     = netpath("data", "spreadsheet", "VacationRequestTemplate.xlsx")
-REQUEST_FILE         = netpath("payroll_records", "vacation", "vacation_requests.xlsx")
+REQUEST_TEMPLATE = netpath("data", "spreadsheet", "VacationRequestTemplate.xlsx")
+REQUEST_FILE = netpath("payroll_records", "vacation", "vacation_requests.xlsx")
 
 # Master Payroll Directory
-MASTER_PAYROLL_DIR   = netpath("payroll_records", "master_payroll")
+MASTER_PAYROLL_DIR = netpath("payroll_records", "master_payroll")
 
 # Ensure master payroll directory exists
 os.makedirs(MASTER_PAYROLL_DIR, exist_ok=True)
+
 
 # =========================================================
 # Helpers
@@ -92,8 +95,10 @@ def ensure_file_exists(target, template):
         shutil.copy(template, target)
         print(f"Created: {os.path.basename(target)} from template.")
 
+
 ensure_file_exists(VACATION_LOG, VACATION_TEMPLATE)
 ensure_file_exists(REQUEST_FILE, REQUEST_TEMPLATE)
+
 
 # ---------------------------------------------------------
 # Helper to append master_payroll file
@@ -126,7 +131,6 @@ def append_to_master_payroll(emp, rows):
     workbook.close()
 
 
-
 # =========================================================
 # Authentication Helper
 # =========================================================
@@ -144,13 +148,13 @@ def authenticate(username, password):
 # =========================================================
 # Employee Excel Column Constants
 # =========================================================
-COL_FIRST             = "first"
-COL_LAST              = "last"
-COL_VACATION_MAX      = "vacation_max"
-COL_VACATION_REMAIN   = "vacation_remaining"
-COL_ROLE              = "role"
-COL_USERNAME          = "username"
-COL_PASSWORD          = "password"
+COL_FIRST = "first"
+COL_LAST = "last"
+COL_VACATION_MAX = "vacation_max"
+COL_VACATION_REMAIN = "vacation_remaining"
+COL_ROLE = "role"
+COL_USERNAME = "username"
+COL_PASSWORD = "password"
 
 
 # =========================================================
@@ -161,7 +165,6 @@ class Employee:
 
     def __init__(self, first, last, vacation_max=0, vacation_remaining=0,
                  passwd="", username=None, role="employee"):
-
         self.first = first
         self.last = last
         self.vacation_max = int(vacation_max)
@@ -193,6 +196,7 @@ class Employee:
             f"vacation_remaining={self.vacation_remaining})"
         )
 
+
 # =========================================================
 # Load Employees from Excel
 # =========================================================
@@ -221,6 +225,7 @@ def load_employees_from_excel(path):
         loaded_employees.append(emp)
 
     return loaded_employees
+
 
 # =========================================================
 # Initialize Global Employee List
@@ -274,7 +279,6 @@ def clean_key(name):
         .replace(">", "_gt_")
         .replace("<", "_lt_")
     )
-
 
 
 # =========================================================
@@ -334,7 +338,6 @@ def load_payrates_from_excel(path):
     return loaded_payrates
 
 
-
 # =========================================================
 # Save Payrates to Excel
 # =========================================================
@@ -355,6 +358,7 @@ def save_payrates_to_excel(path, payrate_dict):
 # =========================================================
 payrates = load_payrates_from_excel(PAYRATE_FILE)
 print(f"Loaded {len(payrates)} payrates from Excel.")
+
 
 # =========================================================
 # Application Controller
@@ -873,6 +877,7 @@ class MainAdminFrame(ctk.CTkFrame):
         self.master.current_user = None
         self.master.show_frame("login")
 
+
 # =========================================================
 # Employee Records (Admin Module)
 # =========================================================
@@ -942,7 +947,6 @@ class EmployeeManagementFrame(ctk.CTkFrame):
 
         # Table rows
         for row_index, emp in enumerate(employees, start=1):
-
             ctk.CTkLabel(self.table_frame, text=emp.username).grid(row=row_index, column=0, padx=10, pady=5)
             ctk.CTkLabel(self.table_frame, text=emp.fullname).grid(row=row_index, column=1, padx=10, pady=5)
             ctk.CTkLabel(self.table_frame, text=emp.role).grid(row=row_index, column=2, padx=10, pady=5)
@@ -988,6 +992,7 @@ class EmployeeManagementFrame(ctk.CTkFrame):
         employees.remove(employee)
         save_employees_to_excel()
         self.on_show()
+
 
 # =========================================================
 # Employee Detail / Edit Screen
@@ -1121,6 +1126,7 @@ class EmployeeDetailFrame(ctk.CTkFrame):
         messagebox.showinfo("Success", "Employee updated successfully.")
         self.master.show_frame("employee_management")
 
+
 # =========================================================
 # Add Employee Screen
 # =========================================================
@@ -1241,6 +1247,7 @@ class AddEmployeeFrame(ctk.CTkFrame):
         messagebox.showinfo("Success", "Employee created successfully.")
         self.master.show_frame("employee_management")
 
+
 # =========================================================
 # Payroll Tools Menu
 # =========================================================
@@ -1317,6 +1324,7 @@ class PayrollToolsMenuFrame(ctk.CTkFrame):
 
     def on_show(self):
         pass  # Nothing dynamic yet, but ready for future updates
+
 
 # =========================================================
 # Pay Sheet Frame
@@ -1568,6 +1576,7 @@ class PaySheetFrame(ctk.CTkFrame):
         # Clear all payrate entries
         for entry in self.payrate_entries.values():
             entry.delete(0, "end")
+
 
 # =========================================================
 # Pay Split Calculation Window
@@ -2006,18 +2015,18 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
                 # Totals per pay item
                 if pay_item:
                     global_pay_item_totals[pay_item] = (
-                        global_pay_item_totals.get(pay_item, 0) + split
+                            global_pay_item_totals.get(pay_item, 0) + split
                     )
 
                 # Totals per job
                 if job_name:
                     global_job_totals[job_name] = (
-                        global_job_totals.get(job_name, 0) + split
+                            global_job_totals.get(job_name, 0) + split
                     )
 
                 # Totals per day
                 global_day_totals[date_val] = (
-                    global_day_totals.get(date_val, 0) + split
+                        global_day_totals.get(date_val, 0) + split
                 )
 
             # Write employee total
@@ -2062,7 +2071,6 @@ class WeeklyPayrollFrame(ctk.CTkFrame):
         workbook.close()
 
         messagebox.showinfo("Weekly Payroll Generated", f"Saved to:\n{output_path}")
-
 
 
 # =========================================================
@@ -2262,6 +2270,7 @@ class ViewWeeklyPayrollFrame(ctk.CTkFrame):
     def go_back(self):
         self.reset_view()
         self.master.show_frame("payroll_tools_menu")
+
 
 # =========================================================
 # YTD Payroll Frame
@@ -2872,7 +2881,8 @@ class VacationPayrollFrame(ctk.CTkFrame):
         self.days_entry.grid(row=1, column=1, padx=10, pady=10)
 
         # Rate (auto-filled)
-        ctk.CTkLabel(input_section, text="Vacation Pay Rate ($/day):").grid(row=2, column=0, padx=10, pady=10, sticky="e")
+        ctk.CTkLabel(input_section, text="Vacation Pay Rate ($/day):").grid(row=2, column=0, padx=10, pady=10,
+                                                                            sticky="e")
         self.rate_entry = ctk.CTkEntry(input_section, width=200)
         self.rate_entry.grid(row=2, column=1, padx=10, pady=10)
 
@@ -3313,8 +3323,9 @@ class VacationRequestApprovalFrame(ctk.CTkFrame):
         # Table Rows
         # -----------------------------
         for row_index, (idx, row) in enumerate(pending.iterrows(), start=1):
-
-            ctk.CTkLabel(self.table_frame, text=row["date_requested"].strftime("%Y-%m-%d")).grid(row=row_index, column=0, padx=10, pady=5)
+            ctk.CTkLabel(self.table_frame, text=row["date_requested"].strftime("%Y-%m-%d")).grid(row=row_index,
+                                                                                                 column=0, padx=10,
+                                                                                                 pady=5)
             ctk.CTkLabel(self.table_frame, text=row["fullname"]).grid(row=row_index, column=1, padx=10, pady=5)
             ctk.CTkLabel(self.table_frame, text=row["days_requested"]).grid(row=row_index, column=2, padx=10, pady=5)
 
@@ -3590,7 +3601,7 @@ class EmployeeInfoFrame(ctk.CTkFrame):
 
         for i, text in enumerate(labels):
             ctk.CTkLabel(section, text=text).grid(
-                row=i+1, column=0, padx=10, pady=10, sticky="e"
+                row=i + 1, column=0, padx=10, pady=10, sticky="e"
             )
 
         # Dynamic fields
@@ -4088,9 +4099,6 @@ class CommandPalette(ctk.CTkToplevel):
 
         # Close the palette
         self.destroy()
-
-
-
 
 
 if __name__ == "__main__":
