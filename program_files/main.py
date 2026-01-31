@@ -1,5 +1,5 @@
 # =========================================================
-# Standard Library Imports
+# Library Imports
 # =========================================================
 
 import datetime
@@ -58,11 +58,8 @@ def startup_log():
     print("  • openpyxl.styles.Font")
     print("  • openpyxl.utils.get_column_letter")
     print("------------------------------------------")
-    print("Initializing Login Manager...")
+    print("Initializing Splash Screen...")
     print("==========================================")
-
-
-
 
 startup_log()
 
@@ -89,13 +86,8 @@ os.makedirs(MASTER_PAYROLL_DIR, exist_ok=True)
 
 
 # =========================================================
-# Helpers
-# =========================================================
-
-# =========================================================
 # Copy Template Helper
 # =========================================================
-
 def ensure_file_exists(target, template):
     os.makedirs(os.path.dirname(target), exist_ok=True)
 
@@ -424,10 +416,12 @@ class AppController(ctk.CTk):
             "employee_info": EmployeeInfoFrame,
             "request_vacation": RequestVacationFrame,
             "view_employee_payroll": EmployeeWeeklyPayFrame,
+
+            "splash_screen": SplashScreen,
         }
 
         # Show login screen first
-        self.show_frame("login")
+        self.show_frame("splash_screen")
 
     # =========================================================
     # Bind Menu Shortcuts
@@ -3853,9 +3847,6 @@ class RequestVacationFrame(ctk.CTkFrame):
 # =========================================================
 # Employee Weekly Summary Frame
 # =========================================================
-# =========================================================
-# Employee Weekly Summary Frame
-# =========================================================
 class EmployeeWeeklyPayFrame(ctk.CTkFrame):
     """Displays a weekly payroll summary for the logged-in employee."""
 
@@ -4048,6 +4039,72 @@ class EmployeeWeeklyPayFrame(ctk.CTkFrame):
         # -----------------------------
         day_totals = df.groupby(resolved["date"])[resolved["split"]].sum().to_dict()
         build_section("Totals Per Day", day_totals)
+
+
+# =========================================================
+# Splash Screen
+# =========================================================
+# noinspection PyTypeChecker
+class SplashScreen(ctk.CTkFrame):
+    """The splash screen shown at startup."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.place(relwidth=1, relheight=1)
+
+        self.dot_index = 0
+
+
+        # -----------------------------
+        # Center Container
+        # -----------------------------
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.place(relx=0.5, rely=0.5, anchor="center")
+
+        # App Title
+        ctk.CTkLabel(
+            container,
+            text="InsulPay Payroll System",
+            font=ctk.CTkFont(size=32, weight="bold")
+        ).pack(pady=(0, 10))
+
+        # Subtitle
+        ctk.CTkLabel(
+            container,
+            text="Loading, please wait...",
+            font=ctk.CTkFont(size=16)
+        ).pack(pady=(0, 20))
+
+        # Loading Indicator (pulsing dots)
+        self.loading_label = ctk.CTkLabel(
+            container,
+            text="•  •  •",
+            font=ctk.CTkFont(size=28, weight="bold")
+        )
+        self.loading_label.pack()
+
+        # Start animation + timed transition
+        self.animate_dots()
+        self.after(2500, self.finish_loading)  # 2.5 seconds
+
+    # ---------------------------------------------------------
+    # Simple pulsing dots animation
+    # ---------------------------------------------------------
+    def animate_dots(self):
+        sequence = ["•", "• •", "• • •", "• •", "•"]
+        current = getattr(self, "dot_index", 0)
+
+        self.loading_label.configure(text=sequence[current])
+        self.dot_index = (current + 1) % len(sequence)
+
+        self.after(350, self.animate_dots)
+
+    # ---------------------------------------------------------
+    # Transition to login screen
+    # ---------------------------------------------------------
+    def finish_loading(self):
+        self.master.show_frame("login")
 
 
 class CommandPalette(ctk.CTkToplevel):
