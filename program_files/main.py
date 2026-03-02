@@ -664,6 +664,10 @@ class LoginFrame(ctk.CTkFrame):
         # Store logged-in user
         self.master.current_user = user
 
+        # Clear fields after successful login
+        self.username_entry.delete(0, "end")
+        self.password_entry.delete(0, "end")
+
         # Route based on role
         if user.role == "admin":
             self.master.show_frame("main_admin")
@@ -3060,6 +3064,7 @@ class VacationPayrollFrame(ctk.CTkFrame):
 # =========================================================
 # Vacation History Viewer (Polished + Sorted + Clean UI)
 # =========================================================
+# noinspection PyArgumentList
 class VacationHistoryFrame(ctk.CTkFrame):
     """View all vacation log entries for a selected employee."""
 
@@ -3847,6 +3852,7 @@ class RequestVacationFrame(ctk.CTkFrame):
 # =========================================================
 # Employee Weekly Summary Frame
 # =========================================================
+# noinspection PyTypeChecker
 class EmployeeWeeklyPayFrame(ctk.CTkFrame):
     """Displays a weekly payroll summary for the logged-in employee."""
 
